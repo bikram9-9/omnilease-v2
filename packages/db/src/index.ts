@@ -14,3 +14,7 @@ export const db = drizzle(client, { schema });
 
 export * from './schema';
 export type Database = typeof db;
+
+// Re-export common Drizzle query helpers so apps/web never needs
+// drizzle-orm as a direct dep (keeps the boundary clean).
+export { eq, and, or, not, desc, asc, count, sql, inArray, gt, gte, lt, lte, isNull, isNotNull } from 'drizzle-orm';

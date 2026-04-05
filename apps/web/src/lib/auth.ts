@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
-import { eq } from 'drizzle-orm';
-import { db, organizations, users } from '@omnilease/db';
+import { db, eq, organizations, users } from '@omnilease/db';
 import { createClient } from '@/lib/supabase/server';
 
 export type AuthContext = {
@@ -32,5 +31,12 @@ export async function requireOrg(): Promise<AuthContext> {
     .limit(1);
 
   if (!row) redirect('/onboarding');
-  return row as AuthContext;
+  return {
+    userId: row.userId,
+    authUserId: row.authUserId,
+    email: row.email,
+    orgId: row.orgId,
+    orgSlug: row.orgSlug,
+    role: row.role,
+  };
 }
