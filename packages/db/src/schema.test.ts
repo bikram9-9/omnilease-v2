@@ -12,7 +12,7 @@ describe('tenancy schema', () => {
   it('users references organizations', () => {
     const cols = Object.keys(users);
     expect(cols).toEqual(
-      expect.arrayContaining(['id', 'clerkUserId', 'orgId', 'email', 'role']),
+      expect.arrayContaining(['id', 'authUserId', 'orgId', 'email', 'role']),
     );
   });
 });
