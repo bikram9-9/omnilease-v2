@@ -1022,184 +1022,385 @@ git commit -m "feat(db): add conversations, messages, escalations tables"
 
 ---
 
-### Task 7: Integrate Clerk authentication
+### Task 7: Integrate Supabase Auth
 
 **Files:**
-- Create: `apps/web/proxy.ts`
-- Modify: `apps/web/src/app/layout.tsx`
-- Create: `apps/web/src/app/sign-in/[[...sign-in]]/page.tsx`
-- Create: `apps/web/src/app/sign-up/[[...sign-up]]/page.tsx`
+- Create: `apps/web/src/lib/supabase/server.ts`
+- Create: `apps/web/src/lib/supabase/client.ts`
+- Create: `apps/web/src/lib/supabase/middleware.ts`
+- Create: `apps/web/src/proxy.ts`
+- Create: `apps/web/src/app/sign-in/page.tsx`
+- Create: `apps/web/src/app/sign-in/actions.ts`
+- Create: `apps/web/src/app/sign-up/page.tsx`
+- Create: `apps/web/src/app/sign-up/actions.ts`
+- Create: `apps/web/src/app/auth/sign-out/route.ts`
 - Create: `apps/web/src/lib/auth.ts`
 
-- [ ] **Step 1: Install Clerk**
+- [ ] **Step 1: Install Supabase SSR**
 
-Run:
+Run from repo root:
 ```bash
-pnpm --filter @omnilease/web add @clerk/nextjs
+pnpm --filter @omnilease/web add @supabase/supabase-js @supabase/ssr
 ```
 
-- [ ] **Step 2: Set Clerk env vars**
+- [ ] **Step 2: Set Supabase env vars**
 
-User creates a Clerk application at https://dashboard.clerk.com (or `vercel integration add clerk`), enables **Organizations** in Clerk → Configure → Organizations, then pastes keys into `apps/web/.env.local`:
+From Supabase dashboard → Project Settings → API, copy the URL and anon key into `apps/web/.env.local` (append to existing `DATABASE_URL`):
 ```
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...
-NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/onboarding
-NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/onboarding
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...
 ```
 
-**Pause point:** confirm keys are set before continuing.
+Also add these to `apps/web/.env.example`. Remove the old Clerk vars from `.env.example`.
 
-- [ ] **Step 3: Create `apps/web/proxy.ts`**
+Optionally disable email confirmation for local dev: Supabase dashboard → Authentication → Providers → Email → turn OFF "Confirm email". This lets sign-up → dashboard flow work without a mailbox in dev.
 
-> In Next.js 16 the file is `proxy.ts`, at the same level as `src/app`. Since we use `src/`, it lives at `apps/web/proxy.ts` (repo path) — but Next.js expects it next to `app`, so the actual path is `apps/web/src/proxy.ts`. Check which your Next 16 expects and move if needed.
+**Pause point:** confirm SUPABASE vars are set before continuing.
 
-Create at `apps/web/src/proxy.ts`:
+- [ ] **Step 3: Create Supabase clients**
+
+`apps/web/src/lib/supabase/server.ts`:
 ```ts
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 
-const isProtectedRoute = createRouteMatcher([
-  '/onboarding(.*)',
-  '/dashboard(.*)',
-  '/properties(.*)',
-]);
+export async function createClient() {
+  const cookieStore = await cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cookiesToSet) => {
+          try {
+            for (const { name, value, options } of cookiesToSet) {
+              cookieStore.set(name, value, options);
+            }
+          } catch {
+            // Server Component cannot set cookies — middleware handles refresh.
+          }
+        },
+      },
+    },
+  );
+}
+```
 
-export default clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) {
-    await auth.protect();
+`apps/web/src/lib/supabase/client.ts`:
+```ts
+import { createBrowserClient } from '@supabase/ssr';
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+}
+```
+
+`apps/web/src/lib/supabase/middleware.ts`:
+```ts
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
+
+const PROTECTED_PREFIXES = ['/dashboard', '/properties', '/onboarding'];
+
+export async function updateSession(request: NextRequest) {
+  let response = NextResponse.next({ request });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          for (const { name, value } of cookiesToSet) {
+            request.cookies.set(name, value);
+          }
+          response = NextResponse.next({ request });
+          for (const { name, value, options } of cookiesToSet) {
+            response.cookies.set(name, value, options);
+          }
+        },
+      },
+    },
+  );
+
+  // Refreshes the session if expired.
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const isProtected = PROTECTED_PREFIXES.some((p) =>
+    request.nextUrl.pathname.startsWith(p),
+  );
+  if (!user && isProtected) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/sign-in';
+    return NextResponse.redirect(url);
   }
-});
+
+  return response;
+}
+```
+
+- [ ] **Step 4: Create `apps/web/src/proxy.ts`**
+
+Next.js 16 uses `proxy.ts` at the same level as `app/`. With `src/` layout, that's `apps/web/src/proxy.ts`:
+```ts
+import type { NextRequest } from 'next/server';
+import { updateSession } from '@/lib/supabase/middleware';
+
+export default async function proxy(request: NextRequest) {
+  return updateSession(request);
+}
 
 export const config = {
   matcher: [
     '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    '/(api|trpc)(.*)',
   ],
 };
 ```
 
-- [ ] **Step 4: Wrap root layout with ClerkProvider**
+- [ ] **Step 5: Create sign-in page + server action**
 
-Update `apps/web/src/app/layout.tsx`:
-```tsx
-import type { Metadata } from 'next';
-import { ClerkProvider } from '@clerk/nextjs';
-import './globals.css';
+`apps/web/src/app/sign-in/actions.ts`:
+```ts
+'use server';
 
-export const metadata: Metadata = {
-  title: 'OmniLease',
-  description: 'AI leasing assistant for multifamily operators',
-};
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <ClerkProvider>
-      <html lang="en" className="dark">
-        <body className="bg-zinc-950 text-zinc-50 antialiased">{children}</body>
-      </html>
-    </ClerkProvider>
-  );
+export async function signIn(formData: FormData) {
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({
+    email: String(formData.get('email') ?? ''),
+    password: String(formData.get('password') ?? ''),
+  });
+  if (error) return { error: error.message };
+  redirect('/dashboard');
 }
 ```
 
-- [ ] **Step 5: Create sign-in / sign-up catch-all pages**
-
-`apps/web/src/app/sign-in/[[...sign-in]]/page.tsx`:
+`apps/web/src/app/sign-in/page.tsx`:
 ```tsx
-import { SignIn } from '@clerk/nextjs';
+'use client';
+
+import Link from 'next/link';
+import { useState, useTransition } from 'react';
+import { signIn } from './actions';
 
 export default function SignInPage() {
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function onSubmit(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      const result = await signIn(formData);
+      if (result?.error) setError(result.error);
+    });
+  }
+
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
-      <SignIn />
+      <div className="w-full max-w-sm space-y-6">
+        <h1 className="text-center text-2xl font-semibold">Sign in</h1>
+        <form action={onSubmit} className="space-y-4">
+          <input
+            type="email" name="email" placeholder="email" required autoComplete="email"
+            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
+          />
+          <input
+            type="password" name="password" placeholder="password" required autoComplete="current-password"
+            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
+          />
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          <button
+            type="submit" disabled={isPending}
+            className="w-full rounded-md bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-950 disabled:opacity-60"
+          >
+            {isPending ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+        <p className="text-center text-sm text-zinc-400">
+          No account? <Link href="/sign-up" className="text-zinc-50 underline">Sign up</Link>
+        </p>
+      </div>
     </main>
   );
 }
 ```
 
-`apps/web/src/app/sign-up/[[...sign-up]]/page.tsx`:
+- [ ] **Step 6: Create sign-up page + server action**
+
+`apps/web/src/app/sign-up/actions.ts`:
+```ts
+'use server';
+
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+
+export async function signUp(formData: FormData) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signUp({
+    email: String(formData.get('email') ?? ''),
+    password: String(formData.get('password') ?? ''),
+  });
+  if (error) return { error: error.message };
+  // If email confirmation is enabled, session will be null — user must
+  // confirm before signing in.
+  if (!data.session) return { needsConfirmation: true };
+  redirect('/onboarding');
+}
+```
+
+`apps/web/src/app/sign-up/page.tsx`:
 ```tsx
-import { SignUp } from '@clerk/nextjs';
+'use client';
+
+import Link from 'next/link';
+import { useState, useTransition } from 'react';
+import { signUp } from './actions';
 
 export default function SignUpPage() {
+  const [error, setError] = useState<string | null>(null);
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function onSubmit(formData: FormData) {
+    setError(null);
+    setNeedsConfirmation(false);
+    startTransition(async () => {
+      const result = await signUp(formData);
+      if (result?.error) setError(result.error);
+      if (result?.needsConfirmation) setNeedsConfirmation(true);
+    });
+  }
+
+  if (needsConfirmation) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-8">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-semibold">Check your email</h1>
+          <p className="mt-3 text-zinc-400">
+            We sent a confirmation link to your inbox. Click it to finish signing up.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
-      <SignUp />
+      <div className="w-full max-w-sm space-y-6">
+        <h1 className="text-center text-2xl font-semibold">Sign up</h1>
+        <form action={onSubmit} className="space-y-4">
+          <input
+            type="email" name="email" placeholder="email" required autoComplete="email"
+            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
+          />
+          <input
+            type="password" name="password" placeholder="password (min 8 chars)" required
+            minLength={8} autoComplete="new-password"
+            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
+          />
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          <button
+            type="submit" disabled={isPending}
+            className="w-full rounded-md bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-950 disabled:opacity-60"
+          >
+            {isPending ? 'Creating account…' : 'Sign up'}
+          </button>
+        </form>
+        <p className="text-center text-sm text-zinc-400">
+          Have an account? <Link href="/sign-in" className="text-zinc-50 underline">Sign in</Link>
+        </p>
+      </div>
     </main>
   );
 }
 ```
 
-- [ ] **Step 6: Create `apps/web/src/lib/auth.ts` (tenant guard)**
+- [ ] **Step 7: Create sign-out route**
+
+`apps/web/src/app/auth/sign-out/route.ts`:
+```ts
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  return NextResponse.redirect(new URL('/', request.url), { status: 303 });
+}
+```
+
+- [ ] **Step 8: Create `apps/web/src/lib/auth.ts` (tenant guard)**
 
 ```ts
-import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { db, organizations, users } from '@omnilease/db';
 import { eq } from 'drizzle-orm';
+import { db, organizations, users } from '@omnilease/db';
+import { createClient } from '@/lib/supabase/server';
 
 export type AuthContext = {
-  userId: string;        // internal users.id
-  clerkUserId: string;
-  orgId: string;         // internal organizations.id
-  clerkOrgId: string;
+  userId: string;      // internal public.users.id
+  authUserId: string;  // auth.users.id
+  email: string;
+  orgId: string;
+  orgSlug: string;
   role: string;
 };
 
 /**
- * Loads the current user and their active organization. Redirects to
- * /sign-in if not signed in, /onboarding if signed in but no org is
- * selected or the org hasn't been synced to our DB yet.
+ * Loads the signed-in user + their organization. Redirects:
+ * - to /sign-in if no Supabase session
+ * - to /onboarding if signed in but no public.users row yet
  */
 export async function requireOrg(): Promise<AuthContext> {
-  const { userId: clerkUserId, orgId: clerkOrgId } = await auth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/sign-in');
 
-  if (!clerkUserId) redirect('/sign-in');
-  if (!clerkOrgId) redirect('/onboarding');
-
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.clerkOrgId, clerkOrgId))
-    .limit(1);
-
-  if (!org) redirect('/onboarding');
-
-  const [user] = await db
-    .select()
+  const [row] = await db
+    .select({
+      userId: users.id,
+      authUserId: users.authUserId,
+      email: users.email,
+      role: users.role,
+      orgId: users.orgId,
+      orgSlug: organizations.slug,
+    })
     .from(users)
-    .where(eq(users.clerkUserId, clerkUserId))
+    .innerJoin(organizations, eq(organizations.id, users.orgId))
+    .where(eq(users.authUserId, user.id))
     .limit(1);
 
-  if (!user) redirect('/onboarding');
-
-  return {
-    userId: user.id,
-    clerkUserId,
-    orgId: org.id,
-    clerkOrgId,
-    role: user.role,
-  };
+  if (!row) redirect('/onboarding');
+  return row as AuthContext;
 }
 ```
 
-- [ ] **Step 7: Verify dev server boots with Clerk**
+- [ ] **Step 9: Verify dev server boots and auth works**
 
 Run:
 ```bash
 pnpm --filter @omnilease/web dev
 ```
-Visit http://localhost:3000/sign-in — expect the Clerk sign-in widget to render. Create an account. You'll be redirected to `/onboarding` (which 404s — fixed next task).
+Visit http://localhost:3000/sign-up. Submit form with a test email + password. Expected:
+- If email confirmation is OFF: redirect to `/onboarding` (404 for now — fixed next task)
+- If email confirmation is ON: "Check your email" screen
+
+Verify a row was created in Supabase: dashboard → Authentication → Users.
 
 Kill the server.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add apps/web
-git commit -m "feat(web): integrate Clerk auth + multi-tenant guard"
+git commit -m "feat(web): integrate Supabase Auth + multi-tenant guard"
 ```
 
 ---
@@ -1216,59 +1417,56 @@ Create `apps/web/src/app/onboarding/actions.ts`:
 ```ts
 'use server';
 
-import { auth, clerkClient } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { db, organizations, users } from '@omnilease/db';
 import { eq } from 'drizzle-orm';
+import { db, organizations, users } from '@omnilease/db';
+import { createClient } from '@/lib/supabase/server';
 
-export async function syncOrgFromClerk() {
-  const { userId: clerkUserId, orgId: clerkOrgId } = await auth();
-  if (!clerkUserId || !clerkOrgId) redirect('/sign-in');
+function toSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50)
+    || 'org';
+}
 
-  const client = await clerkClient();
-  const clerkOrg = await client.organizations.getOrganization({ organizationId: clerkOrgId });
-  const clerkUser = await client.users.getUser(clerkUserId);
+export async function createOrganization(formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/sign-in');
 
-  // Upsert organization
-  const [existingOrg] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.clerkOrgId, clerkOrgId))
-    .limit(1);
-
-  let orgRow = existingOrg;
-  if (!orgRow) {
-    [orgRow] = await db
-      .insert(organizations)
-      .values({
-        clerkOrgId,
-        name: clerkOrg.name,
-        slug: clerkOrg.slug ?? clerkOrgId,
-      })
-      .returning();
-  }
-
-  // Upsert user
-  const email = clerkUser.emailAddresses.find(
-    (e) => e.id === clerkUser.primaryEmailAddressId,
-  )?.emailAddress;
-  if (!email) throw new Error('User has no primary email');
-
-  const [existingUser] = await db
-    .select()
+  // If this auth user already has a public.users row, skip creation.
+  const [existing] = await db
+    .select({ id: users.id })
     .from(users)
-    .where(eq(users.clerkUserId, clerkUserId))
+    .where(eq(users.authUserId, user.id))
     .limit(1);
+  if (existing) redirect('/dashboard');
 
-  if (!existingUser) {
-    await db.insert(users).values({
-      clerkUserId,
-      orgId: orgRow.id,
-      email,
-      name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') || null,
-      role: 'admin', // first user in an org is admin
-    });
+  const name = String(formData.get('name') ?? '').trim();
+  if (!name) return { error: 'Organization name is required' };
+
+  // Slug: base + optional counter to ensure uniqueness.
+  let slug = toSlug(name);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const [clash] = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.slug, slug))
+      .limit(1);
+    if (!clash) break;
+    slug = `${toSlug(name)}-${Math.random().toString(36).slice(2, 6)}`;
   }
+
+  const [org] = await db
+    .insert(organizations)
+    .values({ name, slug })
+    .returning({ id: organizations.id });
+
+  await db.insert(users).values({
+    authUserId: user.id,
+    orgId: org.id,
+    email: user.email ?? '',
+    name: (user.user_metadata?.full_name as string | undefined) ?? null,
+    role: 'admin', // first user in a new org is admin
+  });
 
   redirect('/dashboard');
 }
@@ -1278,25 +1476,46 @@ export async function syncOrgFromClerk() {
 
 Create `apps/web/src/app/onboarding/page.tsx`:
 ```tsx
-import { auth } from '@clerk/nextjs/server';
-import { CreateOrganization } from '@clerk/nextjs';
-import { syncOrgFromClerk } from './actions';
+'use client';
 
-export default async function OnboardingPage() {
-  const { orgId } = await auth();
+import { useState, useTransition } from 'react';
+import { createOrganization } from './actions';
 
-  // User created an org in Clerk — sync to our DB
-  if (orgId) {
-    await syncOrgFromClerk();
-    // syncOrgFromClerk redirects, so we never reach here
-    return null;
+export default function OnboardingPage() {
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function onSubmit(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      const result = await createOrganization(formData);
+      if (result?.error) setError(result.error);
+    });
   }
 
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
-      <div className="w-full max-w-md">
-        <h1 className="mb-6 text-center text-2xl font-semibold">Create your organization</h1>
-        <CreateOrganization afterCreateOrganizationUrl="/onboarding" />
+      <div className="w-full max-w-sm space-y-6">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold">Create your organization</h1>
+          <p className="mt-2 text-sm text-zinc-400">
+            This is the company or portfolio that owns your properties.
+          </p>
+        </div>
+        <form action={onSubmit} className="space-y-4">
+          <input
+            type="text" name="name" placeholder="e.g. Gulf Breeze Holdings"
+            required maxLength={200} autoFocus
+            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
+          />
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          <button
+            type="submit" disabled={isPending}
+            className="w-full rounded-md bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-950 disabled:opacity-60"
+          >
+            {isPending ? 'Creating…' : 'Create organization'}
+          </button>
+        </form>
       </div>
     </main>
   );
@@ -1310,10 +1529,15 @@ Run:
 pnpm --filter @omnilease/web dev
 ```
 Flow:
-1. Visit `/sign-up`, create account
-2. Redirected to `/onboarding` — should show "Create your organization" form
-3. Create an org — should auto-sync and redirect to `/dashboard` (404 for now, fixed next task)
-4. In Supabase SQL editor, run `SELECT * FROM organizations; SELECT * FROM users;` — expect 1 row in each.
+1. Visit `/sign-up`, create account (with email confirmation disabled, auto-redirects to `/onboarding`)
+2. Type an org name → submit
+3. Should redirect to `/dashboard` (404 for now, fixed next task)
+4. In Supabase SQL editor, run:
+   ```sql
+   SELECT * FROM organizations;
+   SELECT id, auth_user_id, org_id, email, role FROM users;
+   ```
+   Expect 1 row in each, `users.auth_user_id` matching the `auth.users.id` of the signup.
 
 Kill the server.
 
@@ -1321,7 +1545,7 @@ Kill the server.
 
 ```bash
 git add apps/web
-git commit -m "feat(web): org onboarding syncs Clerk org+user to DB"
+git commit -m "feat(web): org onboarding creates org + links auth user"
 ```
 
 ---
