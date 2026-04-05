@@ -45,3 +45,36 @@ describe('property schema', () => {
     );
   });
 });
+
+import { conversations, messages, escalations } from './schema';
+
+describe('conversation schema', () => {
+  it('conversations has channel + status', () => {
+    const cols = Object.keys(conversations);
+    expect(cols).toEqual(
+      expect.arrayContaining([
+        'id', 'propertyId', 'channel', 'externalId', 'status',
+        'prospectPhone', 'prospectEmail', 'prospectName',
+      ]),
+    );
+  });
+
+  it('messages stores role + content', () => {
+    const cols = Object.keys(messages);
+    expect(cols).toEqual(
+      expect.arrayContaining([
+        'id', 'conversationId', 'role', 'content', 'channel',
+        'tokensUsed', 'llmCost',
+      ]),
+    );
+  });
+
+  it('escalations has priority + resolvedAt', () => {
+    const cols = Object.keys(escalations);
+    expect(cols).toEqual(
+      expect.arrayContaining([
+        'id', 'conversationId', 'reason', 'priority', 'resolvedAt',
+      ]),
+    );
+  });
+});
