@@ -4,9 +4,9 @@
 
 **Goal:** Stand up a multi-tenant Next.js SaaS that lets a property manager sign up, create an organization, add properties, configure their knowledge base (pricing, pets, parking, amenities, FAQs), and manage unit types — the data foundation the conversation engine will read from in Plan 2.
 
-**Architecture:** Single Next.js 16 app deployed on Vercel, using Server Components + Server Actions for UI mutations and Route Handlers for (future) webhooks. Multi-tenancy is app-scoped: every query derives `orgId` from `await auth()` (Clerk) and filters by it. Drizzle ORM with Neon's serverless driver keeps DB access typed and edge-safe.
+**Architecture:** Single Next.js 16 app deployed on Vercel, using Server Components + Server Actions for UI mutations and Route Handlers for (future) webhooks. Multi-tenancy is app-scoped: every query derives `orgId` from `await auth()` (Clerk) and filters by it. Drizzle ORM with the `postgres-js` driver connects to Supabase Postgres.
 
-**Tech Stack:** Next.js 16, TypeScript, Clerk (auth + orgs), Neon Postgres, Drizzle ORM, Tailwind CSS, shadcn/ui, Zod, Vitest, pnpm + Turborepo.
+**Tech Stack:** Next.js 16, TypeScript, Clerk (auth + orgs), Supabase Postgres, Drizzle ORM, Tailwind CSS, shadcn/ui, Zod, Vitest, pnpm + Turborepo.
 
 **Non-goals for this plan:** No SMS, no Claude integration, no webchat widget, no conversation viewing, no analytics, no queue/worker. Those come in Plans 2 and 3.
 
@@ -382,7 +382,7 @@ export default function HomePage() {
 - [ ] **Step 9: Create `apps/web/.env.example`**
 
 ```
-# Database (Neon)
+# Database (Supabase)
 DATABASE_URL=postgresql://user:password@host/db?sslmode=require
 
 # Clerk
@@ -412,7 +412,7 @@ git commit -m "feat(web): bootstrap Next.js 16 app with Tailwind"
 
 ---
 
-### Task 3: Provision Neon Postgres + Drizzle package
+### Task 3: Provision Supabase Postgres + Drizzle package
 
 **Files:**
 - Create: `packages/db/package.json`
@@ -420,15 +420,19 @@ git commit -m "feat(web): bootstrap Next.js 16 app with Tailwind"
 - Create: `packages/db/drizzle.config.ts`
 - Create: `packages/db/src/index.ts`
 
-- [ ] **Step 1: Provision Neon via Vercel Marketplace**
+- [ ] **Step 1: Provision Supabase via Vercel Marketplace**
 
-The Neon integration must be installed manually by the user (CLI requires interactive terms acceptance):
+Install Supabase integration (interactive — user must accept terms):
 ```bash
-vercel integration add neon
+vercel integration add supabase
 ```
-After install, user creates a database in the Neon dashboard and copies `DATABASE_URL` into `apps/web/.env.local`.
+Or create a project directly at supabase.com. Then in the Supabase dashboard → Project Settings → Database → Connection string, copy:
+- **Transaction pooler URL** (port 6543) → `DATABASE_URL` in `apps/web/.env.local` (runtime)
+- **Direct connection URL** (port 5432) → `DATABASE_URL` in `packages/db/.env` (drizzle-kit migrations)
 
-**Pause point:** confirm `DATABASE_URL` is set in `apps/web/.env.local` before continuing.
+Or use the same direct connection in both for MVP simplicity.
+
+**Pause point:** confirm `DATABASE_URL` is set before continuing to Task 4.
 
 - [ ] **Step 2: Create `packages/db/package.json`**
 
@@ -447,8 +451,8 @@ After install, user creates a database in the Neon dashboard and copies `DATABAS
     "test": "vitest run"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.10.0",
-    "drizzle-orm": "^0.36.0"
+    "drizzle-orm": "^0.36.0",
+    "postgres": "^3.4.5"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
@@ -505,16 +509,19 @@ export default {
 - [ ] **Step 5: Create `packages/db/src/index.ts`**
 
 ```ts
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from './schema';
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL is not set');
 }
 
-const sql = neon(process.env.DATABASE_URL);
-export const db = drizzle(sql, { schema });
+// Supabase: use the pooler connection string for runtime (port 6543)
+// with `?pgbouncer=true`. Drizzle-kit migrations should use the direct
+// connection (port 5432).
+const client = postgres(process.env.DATABASE_URL, { prepare: false });
+export const db = drizzle(client, { schema });
 
 export * from './schema';
 export type Database = typeof db;
@@ -540,7 +547,7 @@ Expected: no errors.
 
 ```bash
 git add packages/db
-git commit -m "feat(db): scaffold Drizzle + Neon client package"
+git commit -m "feat(db): scaffold Drizzle + Supabase postgres-js client package"
 ```
 
 ---
@@ -650,7 +657,7 @@ Run:
 pnpm --filter @omnilease/db exec drizzle-kit generate --name init_tenancy
 pnpm --filter @omnilease/db exec drizzle-kit migrate
 ```
-Expected: migration file created under `packages/db/drizzle/`, then applied to Neon. Verify in Neon console that `organizations` and `users` tables exist.
+Expected: migration file created under `packages/db/drizzle/`, then applied to Supabase. Verify in Supabase Table Editor that `organizations` and `users` tables exist.
 
 - [ ] **Step 7: Commit**
 
@@ -826,7 +833,7 @@ Run:
 pnpm --filter @omnilease/db exec drizzle-kit generate --name properties
 pnpm --filter @omnilease/db exec drizzle-kit migrate
 ```
-Expected: migration created and applied. Verify tables in Neon console.
+Expected: migration created and applied. Verify tables in Supabase Table Editor.
 
 - [ ] **Step 7: Commit**
 
@@ -1306,7 +1313,7 @@ Flow:
 1. Visit `/sign-up`, create account
 2. Redirected to `/onboarding` — should show "Create your organization" form
 3. Create an org — should auto-sync and redirect to `/dashboard` (404 for now, fixed next task)
-4. In Neon console, run `SELECT * FROM organizations; SELECT * FROM users;` — expect 1 row in each.
+4. In Supabase SQL editor, run `SELECT * FROM organizations; SELECT * FROM users;` — expect 1 row in each.
 
 Kill the server.
 
@@ -2504,7 +2511,7 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
 
 - [ ] **Step 5: Manual E2E test**
 
-Navigate to a property's Knowledge tab. Fill in each category. Save. Refresh — values persist. Verify in Neon:
+Navigate to a property's Knowledge tab. Fill in each category. Save. Refresh — values persist. Verify in Supabase SQL editor:
 ```sql
 SELECT category, content FROM property_knowledge WHERE property_id = '<id>';
 ```
@@ -2539,7 +2546,7 @@ cd apps/web
 vercel env pull .env.local
 ```
 
-If Neon and Clerk env vars aren't already in Vercel, add them:
+If Supabase and Clerk env vars aren't already in Vercel, add them:
 ```bash
 vercel env add DATABASE_URL production
 vercel env add DATABASE_URL preview
@@ -2578,7 +2585,7 @@ On the preview URL:
 5. Create property "The Meridian" (Pensacola, FL)
 6. Add a unit type (1BR/1BA, $1500–$1700, 3 available)
 7. Fill in Pets knowledge (allowed, 75lb limit, $300 deposit, $35/mo)
-8. Verify in Neon console: rows exist in `organizations`, `users`, `properties`, `unit_types`, `property_knowledge`
+8. Verify in Supabase SQL editor: rows exist in `organizations`, `users`, `properties`, `unit_types`, `property_knowledge`
 
 - [ ] **Step 6: Deploy production**
 
@@ -2604,7 +2611,7 @@ git tag phase1-foundation-mvp
 - [ ] User can add, edit, and delete unit types per property
 - [ ] User can configure pricing, pets, parking, amenities, and FAQ knowledge per property
 - [ ] All queries filter by `orgId` derived from `requireOrg()`
-- [ ] Deployed to Vercel with Neon + Clerk
+- [ ] Deployed to Vercel with Supabase + Clerk
 - [ ] `pnpm test` passes (schema tests + validator tests)
 - [ ] `pnpm build` succeeds
 
