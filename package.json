@@ -1,0 +1,23 @@
+{
+  "name": "omnilease",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @omnilease/db db:generate",
+    "db:migrate": "pnpm --filter @omnilease/db db:migrate",
+    "db:studio": "pnpm --filter @omnilease/db db:studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.6.0"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
