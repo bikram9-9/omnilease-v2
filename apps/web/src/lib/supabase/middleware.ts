@@ -5,10 +5,18 @@ const PROTECTED_PREFIXES = ['/dashboard', '/properties', '/onboarding'];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const supabaseKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!supabaseKey) {
+    throw new Error(
+      'Missing Supabase public key. Set NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.',
+    );
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseKey,
     {
       cookies: {
         getAll: () => request.cookies.getAll(),

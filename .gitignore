@@ -10,3 +10,5 @@ dist
 .vercel
 coverage
 drizzle/meta
+
+.playwright-cli
