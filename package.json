@@ -8,7 +8,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-"web:dev": "pnpm --filter @omnilease/web dev",
+    "web:dev": "pnpm --filter @omnilease/web dev",
     "db:generate": "pnpm --filter @omnilease/db db:generate",
     "db:migrate": "pnpm --filter @omnilease/db db:migrate",
     "db:studio": "pnpm --filter @omnilease/db db:studio"
