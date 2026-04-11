@@ -1,0 +1,220 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// vi.hoisted ensures these variables are initialized BEFORE the vi.mock factories
+// run (which are hoisted to the top of the file by Vitest's transform pass).
+const { generateTextMock, resendSendMock } = vi.hoisted(() => ({
+  generateTextMock: vi.fn(),
+  resendSendMock: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock ONLY the AI SDK generateText call + the Resend send. Everything else
+// (DB, drizzle, safety, tools, escalation pipeline) is real.
+vi.mock('ai', async () => {
+  const actual = await vi.importActual<typeof import('ai')>('ai');
+  return { ...actual, generateText: generateTextMock };
+});
+
+vi.mock('@/lib/email/resend', () => ({
+  sendEscalationEmail: resendSendMock,
+}));
+
+// Import AFTER mocks so the engine picks them up.
+import { db, eq } from '@omnilease/db';
+import {
+  organizations,
+  properties,
+  propertyKnowledge,
+  unitTypes,
+  conversations,
+  messages,
+  escalations,
+} from '@omnilease/db';
+import { processConversation } from '../engine';
+
+const TEST_PREFIX = 'int-test-';
+
+async function seedProperty() {
+  const [org] = await db
+    .insert(organizations)
+    .values({
+      name: `${TEST_PREFIX}org`,
+      slug: `${TEST_PREFIX}org-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      plan: 'starter',
+    })
+    .returning();
+
+  const [prop] = await db
+    .insert(properties)
+    .values({
+      orgId: org.id,
+      name: 'Sunset Ridge',
+      address: '123 Main St',
+      city: 'Pensacola',
+      state: 'FL',
+      timezone: 'America/Chicago',
+      escalationEmail: 'manager@example.com',
+      welcomeMessage: null,
+    })
+    .returning();
+
+  await db.insert(unitTypes).values([
+    {
+      propertyId: prop.id,
+      name: '1BR/1BA',
+      bedrooms: 1,
+      bathrooms: '1',
+      sqftMin: 650,
+      sqftMax: 720,
+      priceMin: '1500',
+      priceMax: '1700',
+      availableCount: 3,
+      deposit: '500',
+      isActive: true,
+    },
+  ]);
+
+  await db.insert(propertyKnowledge).values({
+    propertyId: prop.id,
+    category: 'pets',
+    content: { dogsAllowed: true, maxWeightLbs: 75, petRent: 35 },
+  });
+
+  const [conv] = await db
+    .insert(conversations)
+    .values({
+      propertyId: prop.id,
+      channel: 'sms',
+      externalId: '+15551234567',
+      status: 'active',
+    })
+    .returning();
+
+  await db.insert(messages).values({
+    conversationId: conv.id,
+    role: 'user',
+    authorType: 'prospect',
+    content: 'Do you allow dogs?',
+    channel: 'sms',
+  });
+
+  return { orgId: org.id, propertyId: prop.id, conversationId: conv.id };
+}
+
+async function cleanup(orgId: string) {
+  // Cascades via FKs: organizations -> properties -> conversations -> messages -> escalations.
+  await db.delete(organizations).where(eq(organizations.id, orgId));
+}
+
+describe('processConversation (integration)', () => {
+  beforeEach(() => {
+    generateTextMock.mockReset();
+    resendSendMock.mockReset();
+    resendSendMock.mockResolvedValue(undefined);
+  });
+
+  it('happy path — generates a reply, persists it, returns intent + confidence', async () => {
+    const { orgId, propertyId, conversationId } = await seedProperty();
+    try {
+      generateTextMock.mockResolvedValue({
+        text: 'Yes — we welcome dogs up to 75 lbs! Want to come see a 1BR?',
+        steps: [],
+      });
+
+      const result = await processConversation({
+        conversationId,
+        propertyId,
+        inboundText: 'Do you allow dogs? I have a 60lb golden',
+      });
+
+      expect(result.intent).toBe('pets');
+      expect(result.escalated).toBe(false);
+      expect(result.assistantText).toContain('75 lbs');
+      expect(result.confidence).toBeGreaterThanOrEqual(0.7);
+
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversationId));
+      expect(rows.length).toBe(2); // seeded user message + assistant reply
+      const assistant = rows.find((r) => r.role === 'assistant');
+      expect(assistant?.authorType).toBe('ai');
+      expect(assistant?.content).toContain('75 lbs');
+    } finally {
+      await cleanup(orgId);
+    }
+  });
+
+  it('escalates when the model calls escalate_to_human and emails the agent', async () => {
+    const { orgId, propertyId, conversationId } = await seedProperty();
+    try {
+      generateTextMock.mockResolvedValue({
+        text: 'Got it — one of our team members will follow up with you shortly.',
+        steps: [
+          {
+            toolCalls: [
+              {
+                toolName: 'escalate_to_human',
+                input: { reason: 'Prospect asked to speak with a human', priority: 'normal' },
+              },
+            ],
+          },
+        ],
+      });
+
+      const result = await processConversation({
+        conversationId,
+        propertyId,
+        inboundText: 'Can I talk to a real person please',
+      });
+
+      expect(result.escalated).toBe(true);
+
+      const [conv] = await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, conversationId));
+      expect(conv.status).toBe('escalated');
+
+      const escalationRows = await db
+        .select()
+        .from(escalations)
+        .where(eq(escalations.conversationId, conversationId));
+      expect(escalationRows.length).toBe(1);
+      expect(escalationRows[0].reason).toContain('speak with a human');
+
+      expect(resendSendMock).toHaveBeenCalledTimes(1);
+      const arg = resendSendMock.mock.calls[0][0];
+      expect(arg.to).toBe('manager@example.com');
+      expect(arg.propertyName).toBe('Sunset Ridge');
+    } finally {
+      await cleanup(orgId);
+    }
+  });
+
+  it('auto-escalates on low confidence and replaces flagged text', async () => {
+    const { orgId, propertyId, conversationId } = await seedProperty();
+    try {
+      // Use a hedged response with NO fair-housing phrases so that the safety
+      // filter doesn't swap the text out before counting hedges. The neutral
+      // fallback text has zero hedges (confidence 0.95), but this text has
+      // "I'm not sure", "I think", "maybe", and "I don't really know" — 4
+      // hedges → confidence = max(0, 0.95 - 4*0.15) = 0.35 → autoEscalate.
+      generateTextMock.mockResolvedValue({
+        text: "I'm not sure about the area. I think maybe the transit options are okay? I don't really know the specifics.",
+        steps: [],
+      });
+
+      const result = await processConversation({
+        conversationId,
+        propertyId,
+        inboundText: 'Is this a good area for commuting?',
+      });
+
+      expect(result.escalated).toBe(true);
+      expect(result.confidence).toBeLessThan(0.7);
+      expect(resendSendMock).toHaveBeenCalledTimes(1);
+    } finally {
+      await cleanup(orgId);
+    }
+  });
+});
