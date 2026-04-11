@@ -8,6 +8,7 @@ import { users } from './tenancy';
 export type ConversationChannel = 'sms' | 'email' | 'webchat' | 'voice';
 export type ConversationStatus = 'active' | 'escalated' | 'closed' | 'converted';
 export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageAuthorType = 'ai' | 'human_agent' | 'prospect';
 export type EscalationPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 export const conversations = pgTable(
@@ -44,12 +45,14 @@ export const messages = pgTable(
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
     role: text('role').$type<MessageRole>().notNull(),
+    authorType: text('author_type').$type<MessageAuthorType>().notNull().default('ai'),
     content: text('content').notNull(),
     channel: text('channel').$type<ConversationChannel>().notNull(),
     tokensUsed: integer('tokens_used'),
     llmCost: numeric('llm_cost', { precision: 10, scale: 6 }),
     confidenceScore: numeric('confidence_score', { precision: 3, scale: 2 }),
     toolCalls: jsonb('tool_calls'),
+    metadata: jsonb('metadata'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

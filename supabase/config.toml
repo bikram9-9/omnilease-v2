@@ -5,3 +5,59 @@
 # direct IPv6-only DB hostname doesn't resolve).
 
 project_id = "omnilease-service-v2"
+
+# Ports are offset to 546xx so this project doesn't collide with other local
+# Supabase projects on the same machine (sandhya-service uses 543xx,
+# purkinje-tutor uses 544xx / 545xx).
+
+[api]
+enabled = true
+port = 54621
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54622
+shadow_port = 54620
+major_version = 15
+
+[db.pooler]
+enabled = false
+port = 54629
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 54623
+api_url = "http://127.0.0.1"
+
+[inbucket]
+enabled = true
+port = 54624
+
+[storage]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[analytics]
+enabled = false
+port = 54627

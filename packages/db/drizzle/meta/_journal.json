@@ -22,6 +22,27 @@
       "when": 1776067200000,
       "tag": "0002_roles_and_user_context",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776283200000,
+      "tag": "0003_phase1_role_rename",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776369600000,
+      "tag": "0004_phase1_conversation_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776456000000,
+      "tag": "0005_phase1_messages_metadata",
+      "breakpoints": true
     }
   ]
 }

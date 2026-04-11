@@ -1,7 +1,7 @@
 import { pgTable, uuid, text, timestamp, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-export type Role = 'worker' | 'property_manager' | 'supervisor_manager' | 'admin';
+export type Role = 'admin' | 'manager' | 'agent';
 
 export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -22,9 +22,9 @@ export const users = pgTable(
     orgId: uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
     name: text('name'),
-    // Operations role enum: worker | property_manager | supervisor_manager | admin.
+    // Operations role enum: admin | manager | agent.
     // Enforced by a CHECK constraint added in 0002_roles_and_user_context.sql.
-    role: text('role').$type<Role>().notNull().default('worker'),
+    role: text('role').$type<Role>().notNull().default('agent'),
     phone: text('phone'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

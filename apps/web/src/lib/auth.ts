@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { db, eq, organizations, users } from '@omnilease/db';
 import { createClient } from '@/lib/supabase/server';
+import type { Role } from '@omnilease/shared';
 
 export type AuthContext = {
   userId: string;      // internal public.users.id
@@ -8,7 +9,7 @@ export type AuthContext = {
   email: string;
   orgId: string;
   orgSlug: string;
-  role: string;
+  role: Role;
 };
 
 export async function requireOrg(): Promise<AuthContext> {
@@ -37,6 +38,6 @@ export async function requireOrg(): Promise<AuthContext> {
     email: row.email,
     orgId: row.orgId,
     orgSlug: row.orgSlug,
-    role: row.role,
+    role: row.role as Role,
   };
 }

@@ -19,5 +19,6 @@ drizzle/meta
 # E2E and script output
 output/
 
-# Supabase CLI cache
+# Supabase CLI cache and local branches
 supabase/.temp/
+supabase/.branches/
