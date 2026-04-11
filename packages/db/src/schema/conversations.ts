@@ -52,6 +52,7 @@ export const messages = pgTable(
     llmCost: numeric('llm_cost', { precision: 10, scale: 6 }),
     confidenceScore: numeric('confidence_score', { precision: 3, scale: 2 }),
     toolCalls: jsonb('tool_calls'),
+    metadata: jsonb('metadata'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

@@ -36,6 +36,13 @@
       "when": 1776369600000,
       "tag": "0004_phase1_conversation_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776456000000,
+      "tag": "0005_phase1_messages_metadata",
+      "breakpoints": true
     }
   ]
 }

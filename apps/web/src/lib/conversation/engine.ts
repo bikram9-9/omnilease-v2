@@ -159,6 +159,7 @@ export async function processConversation(
     channel: 'sms', // overwritten by widget-specific path in Plan 1b
     confidenceScore: String(safety.confidence),
     toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
+    metadata: safety.flagged ? { safety_flag: true } : null,
   });
 
   return {
