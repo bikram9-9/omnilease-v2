@@ -32,7 +32,7 @@ Phase 1 ends when a property manager can:
   → `admin | manager | agent`
 - Twilio SMS inbound webhook + signature verification + outbound send
 - Webchat widget: lean embeddable JS, brand color, no pre-chat form
-- Conversation engine: AI Gateway + `anthropic/claude-sonnet-4-6`, system
+- Conversation engine: AI Gateway + `anthropic/claude-sonnet-4.6`, system
   prompt builder from property knowledge, tool calls for
   `collect_prospect_info`, `check_availability`, `escalate_to_human`
 - Fair-housing + PII safety filter
@@ -86,7 +86,7 @@ Twilio webhook  ──or──  /api/widget/chat (SSE)
 processConversation:
    - build system prompt from property_knowledge + unit_types
    - load history (last 20 turns)
-   - AI Gateway → anthropic/claude-sonnet-4-6
+   - AI Gateway → anthropic/claude-sonnet-4.6
    - route tool calls (escalate / collect_info / check_availability)
    - apply safety filter
    - persist assistant message
@@ -111,11 +111,11 @@ Phase 1 requirement.
 | BullMQ + Redis + worker process   | Next.js `after()` + Fluid Compute                    | Pilot volume fits in one function; fewer moving parts      |
 | Railway / Render hosting          | Vercel                                               | Codebase is already a Next.js app                          |
 | WebSocket widget                  | SSE via AI SDK `toUIMessageStreamResponse()`         | Strictly better on Vercel; no upgrade handshake needed     |
-| Raw Anthropic SDK                 | AI Gateway via `model: 'anthropic/claude-sonnet-4-6'` + OIDC | No API key management, failover, observability    |
+| Raw Anthropic SDK                 | AI Gateway via `model: 'anthropic/claude-sonnet-4.6'` + OIDC | No API key management, failover, observability    |
 | Clerk auth                        | Supabase Auth (already wired in code)                | Functionally equivalent, already implemented               |
 | Escalation via SMS + email + Slack | Resend email only                                   | Pilot customer doesn't need three channels (see §9 Q5)     |
 | Pre-chat form on widget           | `collect_prospect_info` tool call                    | Better UX; the LLM asks for name/email naturally           |
-| `claude-sonnet-4-20250514` model  | `anthropic/claude-sonnet-4-6`                        | Current model as of April 2026                             |
+| `claude-sonnet-4-20250514` model  | `anthropic/claude-sonnet-4.6`                        | Current model as of April 2026                             |
 | Roles: `Admin | Manager | Agent`  | `admin | manager | agent` (migration)               | Matches spec; removes dead `worker` value                  |
 
 Every Phase 1 functional requirement from the spec is satisfied by this
@@ -321,7 +321,7 @@ on the route gives the async work 5 minutes of headroom.
 3. insert messages row (prospect)
 4. return toUIMessageStreamResponse(
      streamText({
-       model: 'anthropic/claude-sonnet-4-6',   // AI Gateway (OIDC)
+       model: 'anthropic/claude-sonnet-4.6',   // AI Gateway (OIDC)
        system: buildSystemPrompt(property, knowledge, unitTypes),
        messages: convertToModelMessages(history + current),
        tools: conversationTools,
