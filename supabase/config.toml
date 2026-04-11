@@ -1,0 +1,7 @@
+# Minimal Supabase project config so the Supabase CLI can `link` and `db push`
+# this monorepo. The canonical schema lives in packages/db (Drizzle), so this
+# config exists only to drive `supabase migration` workflows when we need to
+# apply SQL that drizzle-kit can't reach (e.g. from a machine where the
+# direct IPv6-only DB hostname doesn't resolve).
+
+project_id = "omnilease-service-v2"

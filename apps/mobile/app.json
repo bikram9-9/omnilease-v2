@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Omnilease",
+    "slug": "omnilease",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "omnilease",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.omnilease.app"
+    },
+    "android": {
+      "package": "com.omnilease.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0b0b0c"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

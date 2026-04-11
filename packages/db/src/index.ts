@@ -6,9 +6,10 @@ if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL is not set');
 }
 
-// Supabase: use the pooler connection string for runtime (port 6543)
-// with `?pgbouncer=true`. Drizzle-kit migrations should use the direct
-// connection (port 5432) — see drizzle.config.ts comments.
+// Supabase: prefer the **pooler** `DATABASE_URL` from the dashboard (Session or Transaction
+// mode). The `db.<project>.supabase.co` direct host is often IPv6-only; without IPv6 you get
+// getaddrinfo ENOTFOUND from Node. Pooler hostnames resolve on IPv4. `prepare: false` is
+// required for PgBouncer / transaction pooler.
 const client = postgres(process.env.DATABASE_URL, { prepare: false });
 export const db = drizzle(client, { schema });
 

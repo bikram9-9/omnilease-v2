@@ -4,6 +4,13 @@ import { NextResponse, type NextRequest } from 'next/server';
 const PROTECTED_PREFIXES = ['/dashboard', '/properties', '/onboarding'];
 
 export async function updateSession(request: NextRequest) {
+  const legacyCode = request.nextUrl.searchParams.get('code');
+  if (legacyCode && request.nextUrl.pathname === '/') {
+    const callbackUrl = new URL('/auth/callback', request.url);
+    callbackUrl.searchParams.set('code', legacyCode);
+    return NextResponse.redirect(callbackUrl);
+  }
+
   let response = NextResponse.next({ request });
   const supabaseKey =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??

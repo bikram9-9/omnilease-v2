@@ -12,3 +12,12 @@ coverage
 drizzle/meta
 
 .playwright-cli
+
+# Build artifacts
+*.tsbuildinfo
+
+# E2E and script output
+output/
+
+# Supabase CLI cache
+supabase/.temp/
