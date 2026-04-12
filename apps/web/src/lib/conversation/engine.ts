@@ -1,4 +1,4 @@
-import { generateText, stepCountIs } from 'ai';
+import { generateText, streamText, stepCountIs } from 'ai';
 import { db, eq } from '@omnilease/db';
 import {
   properties as propertiesTable,
@@ -168,4 +168,144 @@ export async function processConversation(
     intent,
     confidence: safety.confidence,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Streaming variant for the webchat widget.
+// ---------------------------------------------------------------------------
+
+export type StreamConversationInput = {
+  conversationId: string;
+  propertyId: string;
+  inboundText: string;
+};
+
+/**
+ * Widget path — same system prompt / tools / history as the non-streaming
+ * path, but returns a streaming Response via AI SDK's `toUIMessageStreamResponse`.
+ * Side effects (escalation, safety filtering, persistence) happen in the
+ * `onFinish` callback after the final text is produced.
+ *
+ * Note: the streaming path intentionally re-uses the same helpers as
+ * `processConversation`. If the two diverge meaningfully, factor out a
+ * private `_buildContext` helper. For now the small duplication is clearer
+ * than premature abstraction.
+ */
+export async function streamConversationForWidget(
+  input: StreamConversationInput,
+): Promise<Response> {
+  const [property] = await db
+    .select()
+    .from(propertiesTable)
+    .where(eq(propertiesTable.id, input.propertyId))
+    .limit(1);
+  if (!property) throw new Error(`property not found: ${input.propertyId}`);
+
+  const units = await db
+    .select()
+    .from(unitTypesTable)
+    .where(eq(unitTypesTable.propertyId, input.propertyId));
+
+  const knowledge = await db
+    .select({
+      category: propertyKnowledgeTable.category,
+      content: propertyKnowledgeTable.content,
+    })
+    .from(propertyKnowledgeTable)
+    .where(eq(propertyKnowledgeTable.propertyId, input.propertyId));
+
+  const intent = classifyIntent(input.inboundText);
+
+  const systemPrompt = buildSystemPrompt({
+    property: {
+      name: property.name,
+      address: property.address,
+      city: property.city,
+      state: property.state,
+      timezone: property.timezone,
+      officeHours: property.officeHours ?? null,
+      welcomeMessage: property.welcomeMessage,
+    },
+    unitTypes: units.map((u) => ({
+      name: u.name,
+      bedrooms: u.bedrooms,
+      bathrooms: u.bathrooms,
+      sqftMin: u.sqftMin,
+      sqftMax: u.sqftMax,
+      priceMin: u.priceMin,
+      priceMax: u.priceMax,
+      availableCount: u.availableCount,
+      deposit: u.deposit,
+      description: u.description,
+      isActive: u.isActive,
+    })),
+    knowledge: knowledge.map((k) => ({ category: k.category, content: k.content })),
+  });
+
+  const tools = buildConversationTools({
+    conversationId: input.conversationId,
+    propertyId: input.propertyId,
+  });
+
+  const history = await loadHistory(input.conversationId, 20);
+  const historyWithNew: typeof history = [
+    ...history,
+    { role: 'user', content: input.inboundText },
+  ];
+
+  const result = streamText({
+    model: MODEL,
+    system: `${systemPrompt}\n\n[Detected intent: ${intent}]`,
+    messages: historyWithNew.map((t) => ({ role: t.role, content: t.content })),
+    tools,
+    stopWhen: stepCountIs(4),
+    onFinish: async (finished) => {
+      const text = finished.text;
+      const steps = finished.steps;
+
+      // Fan out escalation side-effects (same as processConversation).
+      let escalated = false;
+      for (const step of steps) {
+        for (const call of step.toolCalls) {
+          if (call.toolName === 'escalate_to_human') {
+            const args = call.input as {
+              reason: string;
+              priority: 'low' | 'normal' | 'high' | 'urgent';
+            };
+            await escalateConversation({
+              conversationId: input.conversationId,
+              propertyId: input.propertyId,
+              reason: args.reason,
+              priority: args.priority,
+            });
+            escalated = true;
+          }
+        }
+      }
+
+      const safety = applySafetyFilter(text);
+      if (!escalated && safety.autoEscalate) {
+        await escalateConversation({
+          conversationId: input.conversationId,
+          propertyId: input.propertyId,
+          reason: `Low confidence response (score ${safety.confidence.toFixed(2)})`,
+          priority: 'normal',
+        });
+      }
+
+      const allToolCalls = steps.flatMap((s) => s.toolCalls);
+      await db.insert(messagesTable).values({
+        conversationId: input.conversationId,
+        role: 'assistant',
+        authorType: 'ai',
+        content: safety.text,
+        channel: 'webchat',
+        confidenceScore: String(safety.confidence),
+        toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
+        metadata: safety.flagged ? { safety_flag: true } : null,
+      });
+    },
+  });
+
+  return result.toUIMessageStreamResponse();
 }
