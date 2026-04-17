@@ -1,26 +1,134 @@
 # OmniLease
 
-OmniLease is a leasing assistant for multifamily properties.
+OmniLease is a multifamily leasing assistant focused on website chat and Messenger. The current build combines property-specific Markdown context with live unit data from Postgres so the assistant can answer leasing questions, capture leads, and escalate to a human when needed.
 
-The product direction is now:
+## Product Status
 
-- `Phase 1`: website chat + Messenger
-- `Phase 1 goal`: capture inbound leads, answer from property context + live unit data, and move prospects toward a scheduled tour
-- `Phase 2`: phone/SMS
+Current focus: `Phase 1` foundation for website chat + Messenger
 
-## Current Architecture
+Latest shipped update: `April 16, 2026`
 
-The app is a Next.js web app with:
+- Pivoted the product away from SMS-first architecture toward website chat + Messenger
+- Moved prompt context from DB-managed knowledge rows to Markdown files under `content/properties/<property-slug>/`
+- Added `slug`, `websiteWidgetId`, and `messengerPageId` to property records
+- Kept the embeddable website widget and streaming chat path as the primary live channel
+- Removed active Twilio/TCPA runtime code from the current product direction
+- Aligned the conversation engine around Markdown property context plus relational unit inventory
 
-- Markdown files for long-form property context
-- Postgres for operational data
-- a shared conversation engine used by chat channels
+## What Works Today
 
-### Property Context
+- Multi-tenant Next.js dashboard shell with auth, onboarding, and property management
+- Property CRUD with channel identifiers for website widget and Messenger
+- Unit-type management for pricing, availability, deposits, and floorplan metadata
+- Markdown-based property context loading for FAQs, policies, amenities, and touring info
+- Website widget session bootstrap and streaming chat reply API
+- Shared conversation engine with intent classification, tool calling, safety filtering, and escalation hooks
+- Drizzle/Postgres schema for properties, unit types, conversations, messages, and escalations
 
-Property context lives on disk in:
+## What Is Next
 
-`content/properties/<property-slug>/`
+- Messenger webhook ingestion and reply flow
+- Lead capture normalization across website and Messenger conversations
+- Operator inbox for conversations, escalations, and human takeover
+- Tour request and scheduling workflow
+- Phase 2 reintroduction of phone and SMS
+
+## Architecture At A Glance
+
+OmniLease is a `pnpm` monorepo with a Next.js web app, shared packages, and content files that act as part of the prompt source of truth.
+
+```text
+apps/
+  web/                  Next.js 16 app, widget routes, dashboard, auth
+packages/
+  db/                   Drizzle schema and migrations
+  shared/               Shared validators, roles, and auth types
+  supabase/             Supabase client helpers
+content/
+  properties/           Markdown context for each property
+docs/
+  superpowers/          Product plans and implementation docs
+```
+
+The current assistant flow is:
+
+1. Resolve the property from a website widget ID or future Messenger page ID.
+2. Load relational property + unit data from Postgres.
+3. Load long-form context from `content/properties/<property-slug>/`.
+4. Build a system prompt from both sources.
+5. Generate or stream a reply through the shared conversation engine.
+6. Persist messages, tool calls, and escalations in Postgres.
+
+## Tech Stack
+
+- `Next.js 16` + `React 19`
+- `TypeScript`
+- `pnpm` workspaces + `Turborepo`
+- `Supabase` for Postgres and auth
+- `Drizzle ORM` for schema and queries
+- `Vercel AI SDK` with AI Gateway model routing
+- `Resend` for escalation email delivery
+- `Tailwind CSS` + `shadcn/ui`
+
+## Getting Started
+
+### Prerequisites
+
+- `Node.js >= 20`
+- `pnpm >= 9`
+- A Supabase project or compatible Postgres database
+- A Vercel project linked with AI Gateway enabled
+- A Resend API key if you want escalation emails to send
+
+### Install
+
+```bash
+pnpm install
+```
+
+### Configure Environment
+
+Copy `apps/web/.env.example` to `apps/web/.env.local` and fill in the required values.
+
+Important variables:
+
+- `DATABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `APP_URL`
+
+For model access, this repo expects Vercel AI Gateway via OIDC. The intended setup is:
+
+```bash
+vercel link
+vercel env pull apps/web/.env.local
+```
+
+That provisions `VERCEL_OIDC_TOKEN` automatically when AI Gateway is enabled for the linked project.
+
+### Run Migrations
+
+```bash
+pnpm db:migrate
+```
+
+### Start The App
+
+```bash
+pnpm web:dev
+```
+
+The web app runs on [http://localhost:3000](http://localhost:3000).
+
+## Property Context Files
+
+Each property's long-form context lives in:
+
+```text
+content/properties/<property-slug>/
+```
 
 Recommended files:
 
@@ -30,61 +138,49 @@ Recommended files:
 - `faqs.md`
 - `touring.md`
 
-These files are loaded by `apps/web/src/lib/property-context.ts` and fed into the prompt builder.
+The app loads whichever of these files exist and combines them with relational unit data when building the model prompt. You can view the resolved directory for a property inside the dashboard.
 
-### Relational Data
+## Website Widget
 
-Relational data lives in Postgres via Drizzle:
+The website chat widget is served from `apps/web/public/widget.js` and currently supports:
 
-- properties
-- unit types
-- conversations
-- messages
-- escalations
+- Floating launcher + chat panel UI
+- Session initialization through `POST /api/widget/session`
+- Streaming assistant replies through `POST /api/widget/chat`
+- Browser `localStorage` session persistence
+- Per-property branding and welcome message
 
-The current schema pivot is captured in `packages/db/drizzle/0006_website_messenger_pivot.sql`.
+Example embed:
 
-## What Changed In This Pivot
-
-- Removed the SMS-first Twilio webhook path
-- Removed TCPA/quiet-hours/opt-out code
-- Removed DB-backed `property_knowledge` as the prompt source
-- Added property `slug`, `websiteWidgetId`, and `messengerPageId`
-- Refactored the prompt builder to use `Markdown + relational unit data`
-- Kept the website widget path and aligned it to the new schema
-
-## Local Development
-
-Install deps:
-
-```bash
-pnpm install
+```html
+<script
+  src="https://your-app.example/widget.js"
+  data-widget-id="your-widget-id"
+  defer
+></script>
 ```
 
-Run tests:
+## Useful Commands
 
 ```bash
+pnpm dev
+pnpm build
 pnpm test
+pnpm typecheck
+pnpm web:dev
+pnpm db:migrate
+pnpm db:studio
 ```
 
-Typecheck:
+## Current Roadmap
 
-```bash
-pnpm --filter @omnilease/web typecheck
-pnpm --filter @omnilease/db typecheck
-pnpm --filter @omnilease/shared typecheck
-```
+- `Phase 1a`: core engine and database foundation
+- `Phase 1b`: website widget channel
+- `Phase 1c`: dashboard conversations, escalations, analytics, and human takeover
+- `Phase 2`: phone/SMS, tour scheduling, and follow-up workflows
 
-## What’s Next
+## Known Caveats
 
-The next product work should focus on:
-
-1. Messenger ingestion via Meta webhooks
-2. lead capture and prospect normalization across website + Messenger
-3. tour request / scheduling data model and workflow
-4. operator UI for reviewing leads and conversations
-
-## Notes
-
-- There is currently no git remote configured for this repo, so pushes must wait until a remote is added.
-- `drizzle-kit generate` is currently blocked by an existing snapshot collision in `packages/db/drizzle/meta`, so the latest schema pivot was added as a hand-written migration.
+- `drizzle-kit generate` is currently blocked by a snapshot collision in `packages/db/drizzle/meta`, so `packages/db/drizzle/0006_website_messenger_pivot.sql` was added by hand.
+- Messenger ingestion is planned but not merged yet.
+- The current README describes the active product direction; older SMS-first design ideas still exist in historical specs and earlier branches.
