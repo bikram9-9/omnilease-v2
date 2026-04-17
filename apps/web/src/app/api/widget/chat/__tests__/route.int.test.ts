@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { NextRequest } from 'next/server';
 
 // Hoisted mocks
 const { streamTextMock } = vi.hoisted(() => ({
@@ -86,7 +87,7 @@ describe('POST /api/widget/chat (integration)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ widgetId: 'x', sessionId: 'y' }), // missing text
     });
-    const res = await POST(req as any);
+    const res = await POST(req as unknown as NextRequest);
     expect(res.status).toBe(400);
   });
 
@@ -101,7 +102,7 @@ describe('POST /api/widget/chat (integration)', () => {
         text: 'hello',
       }),
     });
-    const res = await POST(req as any);
+    const res = await POST(req as unknown as NextRequest);
     expect(res.status).toBe(404);
   });
 
@@ -124,7 +125,7 @@ describe('POST /api/widget/chat (integration)', () => {
         }),
       });
 
-      const res = await POST(req as any);
+      const res = await POST(req as unknown as NextRequest);
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toContain('text/event-stream');
 

@@ -1,11 +1,9 @@
 import Link from 'next/link';
-import { Building2, Home, MessageSquare, Settings } from 'lucide-react';
+import { Building2, Home } from 'lucide-react';
 
 const nav = [
   { href: '/dashboard', label: 'Overview', icon: Home },
   { href: '/properties', label: 'Properties', icon: Building2 },
-  { href: '/conversations', label: 'Conversations', icon: MessageSquare },
-  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export function Sidebar() {

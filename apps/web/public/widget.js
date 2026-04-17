@@ -132,7 +132,7 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ widgetId, sessionId, text }),
       });
-    } catch (err) {
+    } catch {
       replyEl.textContent = 'Sorry, the chat is offline right now.';
       return;
     }
