@@ -17,6 +17,7 @@ export const properties = pgTable(
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     orgId: uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull(),
     name: text('name').notNull(),
     address: text('address'),
     city: text('city'),
@@ -24,8 +25,8 @@ export const properties = pgTable(
     zip: text('zip'),
     timezone: text('timezone').notNull().default('America/New_York'),
     officeHours: jsonb('office_hours').$type<OfficeHours>(),
-    twilioPhone: text('twilio_phone'),
-    webchatWidgetId: text('webchat_widget_id').unique(),
+    websiteWidgetId: text('website_widget_id').unique(),
+    messengerPageId: text('messenger_page_id').unique(),
     brandColor: text('brand_color'),
     escalationEmail: text('escalation_email'),
     welcomeMessage: text('welcome_message'),
@@ -34,7 +35,9 @@ export const properties = pgTable(
   },
   (t) => ({
     orgIdx: index('properties_org_idx').on(t.orgId),
-    twilioPhoneIdx: uniqueIndex('properties_twilio_phone_idx').on(t.twilioPhone),
+    slugIdx: uniqueIndex('properties_slug_idx').on(t.slug),
+    websiteWidgetIdIdx: uniqueIndex('properties_website_widget_id_idx').on(t.websiteWidgetId),
+    messengerPageIdIdx: uniqueIndex('properties_messenger_page_id_idx').on(t.messengerPageId),
   }),
 );
 
@@ -61,29 +64,7 @@ export const unitTypes = pgTable(
   }),
 );
 
-export type KnowledgeCategory =
-  | 'pricing' | 'pets' | 'parking' | 'amenities' | 'lease_terms'
-  | 'move_in_costs' | 'utilities' | 'neighborhood' | 'faqs';
-
-export const propertyKnowledge = pgTable(
-  'property_knowledge',
-  {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    propertyId: uuid('property_id').notNull().references(() => properties.id, { onDelete: 'cascade' }),
-    category: text('category').$type<KnowledgeCategory>().notNull(),
-    content: jsonb('content').notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    propertyCategoryIdx: uniqueIndex('property_knowledge_property_category_idx').on(
-      t.propertyId, t.category,
-    ),
-  }),
-);
-
 export type Property = typeof properties.$inferSelect;
 export type NewProperty = typeof properties.$inferInsert;
 export type UnitType = typeof unitTypes.$inferSelect;
 export type NewUnitType = typeof unitTypes.$inferInsert;
-export type PropertyKnowledge = typeof propertyKnowledge.$inferSelect;
-export type NewPropertyKnowledge = typeof propertyKnowledge.$inferInsert;

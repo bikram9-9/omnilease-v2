@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm';
 import { properties } from './properties';
 import { users } from './tenancy';
 
-export type ConversationChannel = 'sms' | 'email' | 'webchat' | 'voice';
+export type ConversationChannel = 'messenger' | 'website' | 'phone';
 export type ConversationStatus = 'active' | 'escalated' | 'closed' | 'converted';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type MessageAuthorType = 'ai' | 'human_agent' | 'prospect';

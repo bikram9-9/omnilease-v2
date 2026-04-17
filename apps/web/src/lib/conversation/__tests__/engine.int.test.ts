@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 
 // vi.hoisted ensures these variables are initialized BEFORE the vi.mock factories
 // run (which are hoisted to the top of the file by Vitest's transform pass).
@@ -23,7 +25,6 @@ import { db, eq } from '@omnilease/db';
 import {
   organizations,
   properties,
-  propertyKnowledge,
   unitTypes,
   conversations,
   messages,
@@ -47,6 +48,7 @@ async function seedProperty() {
     .insert(properties)
     .values({
       orgId: org.id,
+      slug: `sunset-ridge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: 'Sunset Ridge',
       address: '123 Main St',
       city: 'Pensacola',
@@ -73,18 +75,20 @@ async function seedProperty() {
     },
   ]);
 
-  await db.insert(propertyKnowledge).values({
-    propertyId: prop.id,
-    category: 'pets',
-    content: { dogsAllowed: true, maxWeightLbs: 75, petRent: 35 },
-  });
+  const contextDir = path.join(process.cwd(), 'content', 'properties', prop.slug);
+  await mkdir(contextDir, { recursive: true });
+  await writeFile(
+    path.join(contextDir, 'policies.md'),
+    '# Policies\nDogs are allowed up to 75 lbs with pet rent.',
+    'utf8',
+  );
 
   const [conv] = await db
     .insert(conversations)
     .values({
       propertyId: prop.id,
-      channel: 'sms',
-      externalId: '+15551234567',
+      channel: 'messenger',
+      externalId: 'm_15551234567',
       status: 'active',
     })
     .returning();
@@ -94,15 +98,19 @@ async function seedProperty() {
     role: 'user',
     authorType: 'prospect',
     content: 'Do you allow dogs?',
-    channel: 'sms',
+    channel: 'messenger',
   });
 
-  return { orgId: org.id, propertyId: prop.id, conversationId: conv.id };
+  return { orgId: org.id, propertyId: prop.id, propertySlug: prop.slug, conversationId: conv.id };
 }
 
-async function cleanup(orgId: string) {
+async function cleanup(orgId: string, propertySlug: string) {
   // Cascades via FKs: organizations -> properties -> conversations -> messages -> escalations.
   await db.delete(organizations).where(eq(organizations.id, orgId));
+  await rm(path.join(process.cwd(), 'content', 'properties', propertySlug), {
+    recursive: true,
+    force: true,
+  });
 }
 
 describe('processConversation (integration)', () => {
@@ -113,7 +121,7 @@ describe('processConversation (integration)', () => {
   });
 
   it('happy path — generates a reply, persists it, returns intent + confidence', async () => {
-    const { orgId, propertyId, conversationId } = await seedProperty();
+    const { orgId, propertyId, propertySlug, conversationId } = await seedProperty();
     try {
       generateTextMock.mockResolvedValue({
         text: 'Yes — we welcome dogs up to 75 lbs! Want to come see a 1BR?',
@@ -124,6 +132,7 @@ describe('processConversation (integration)', () => {
         conversationId,
         propertyId,
         inboundText: 'Do you allow dogs? I have a 60lb golden',
+        channel: 'messenger',
       });
 
       expect(result.intent).toBe('pets');
@@ -140,12 +149,12 @@ describe('processConversation (integration)', () => {
       expect(assistant?.authorType).toBe('ai');
       expect(assistant?.content).toContain('75 lbs');
     } finally {
-      await cleanup(orgId);
+      await cleanup(orgId, propertySlug);
     }
   });
 
   it('escalates when the model calls escalate_to_human and emails the agent', async () => {
-    const { orgId, propertyId, conversationId } = await seedProperty();
+    const { orgId, propertyId, propertySlug, conversationId } = await seedProperty();
     try {
       generateTextMock.mockResolvedValue({
         text: 'Got it — one of our team members will follow up with you shortly.',
@@ -165,6 +174,7 @@ describe('processConversation (integration)', () => {
         conversationId,
         propertyId,
         inboundText: 'Can I talk to a real person please',
+        channel: 'messenger',
       });
 
       expect(result.escalated).toBe(true);
@@ -187,12 +197,12 @@ describe('processConversation (integration)', () => {
       expect(arg.to).toBe('manager@example.com');
       expect(arg.propertyName).toBe('Sunset Ridge');
     } finally {
-      await cleanup(orgId);
+      await cleanup(orgId, propertySlug);
     }
   });
 
   it('auto-escalates on low confidence and replaces flagged text', async () => {
-    const { orgId, propertyId, conversationId } = await seedProperty();
+    const { orgId, propertyId, propertySlug, conversationId } = await seedProperty();
     try {
       // Use a hedged response with NO fair-housing phrases so that the safety
       // filter doesn't swap the text out before counting hedges. The neutral
@@ -208,13 +218,14 @@ describe('processConversation (integration)', () => {
         conversationId,
         propertyId,
         inboundText: 'Is this a good area for commuting?',
+        channel: 'messenger',
       });
 
       expect(result.escalated).toBe(true);
       expect(result.confidence).toBeLessThan(0.7);
       expect(resendSendMock).toHaveBeenCalledTimes(1);
     } finally {
-      await cleanup(orgId);
+      await cleanup(orgId, propertySlug);
     }
   });
 });

@@ -1,11 +1,12 @@
 import { generateText, streamText, stepCountIs } from 'ai';
 import { db, eq } from '@omnilease/db';
 import {
+  type ConversationChannel,
   properties as propertiesTable,
   unitTypes as unitTypesTable,
-  propertyKnowledge as propertyKnowledgeTable,
   messages as messagesTable,
 } from '@omnilease/db';
+import { loadPropertyContext } from '@/lib/property-context';
 import { buildSystemPrompt } from './system-prompt';
 import { loadHistory } from './history';
 import { buildConversationTools } from './tools';
@@ -22,6 +23,7 @@ export type ProcessConversationInput = {
   conversationId: string;
   propertyId: string;
   inboundText: string;
+  channel: ConversationChannel;
 };
 
 export type ProcessConversationResult = {
@@ -32,66 +34,20 @@ export type ProcessConversationResult = {
 };
 
 /**
- * Core entry point — both the SMS webhook (via `after()`) and the widget
- * route call this. The widget path uses a streaming variant implemented
- * separately in Plan 1b; this function is for the non-streaming case.
+ * Core entry point for non-streaming channels such as Messenger.
+ * The website widget uses the streaming variant below.
  */
 export async function processConversation(
   input: ProcessConversationInput,
 ): Promise<ProcessConversationResult> {
-  // 1. Load everything needed for the system prompt.
-  const [property] = await db
-    .select()
-    .from(propertiesTable)
-    .where(eq(propertiesTable.id, input.propertyId))
-    .limit(1);
-  if (!property) throw new Error(`property not found: ${input.propertyId}`);
-
-  const units = await db
-    .select()
-    .from(unitTypesTable)
-    .where(eq(unitTypesTable.propertyId, input.propertyId));
-
-  const knowledge = await db
-    .select({
-      category: propertyKnowledgeTable.category,
-      content: propertyKnowledgeTable.content,
-    })
-    .from(propertyKnowledgeTable)
-    .where(eq(propertyKnowledgeTable.propertyId, input.propertyId));
+  const { systemPrompt } = await loadPromptContext(input.propertyId);
 
   // 2. Classify intent for the system prompt hint and the return value.
   //    The route handler in Plan 1b (which owns the inbound message row) is
   //    responsible for writing metadata.intent on the row.
   const intent = classifyIntent(input.inboundText);
 
-  // 3. Build the prompt + tools.
-  const systemPrompt = buildSystemPrompt({
-    property: {
-      name: property.name,
-      address: property.address,
-      city: property.city,
-      state: property.state,
-      timezone: property.timezone,
-      officeHours: property.officeHours ?? null,
-      welcomeMessage: property.welcomeMessage,
-    },
-    unitTypes: units.map((u) => ({
-      name: u.name,
-      bedrooms: u.bedrooms,
-      bathrooms: u.bathrooms,
-      sqftMin: u.sqftMin,
-      sqftMax: u.sqftMax,
-      priceMin: u.priceMin,
-      priceMax: u.priceMax,
-      availableCount: u.availableCount,
-      deposit: u.deposit,
-      description: u.description,
-      isActive: u.isActive,
-    })),
-    knowledge: knowledge.map((k) => ({ category: k.category, content: k.content })),
-  });
-
+  // 3. Build the tools.
   const tools = buildConversationTools({
     conversationId: input.conversationId,
     propertyId: input.propertyId,
@@ -156,7 +112,7 @@ export async function processConversation(
     role: 'assistant',
     authorType: 'ai',
     content: safety.text,
-    channel: 'sms', // overwritten by widget-specific path in Plan 1b
+    channel: input.channel,
     confidenceScore: String(safety.confidence),
     toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
     metadata: safety.flagged ? { safety_flag: true } : null,
@@ -178,6 +134,7 @@ export type StreamConversationInput = {
   conversationId: string;
   propertyId: string;
   inboundText: string;
+  channel: ConversationChannel;
 };
 
 /**
@@ -194,53 +151,9 @@ export type StreamConversationInput = {
 export async function streamConversationForWidget(
   input: StreamConversationInput,
 ): Promise<Response> {
-  const [property] = await db
-    .select()
-    .from(propertiesTable)
-    .where(eq(propertiesTable.id, input.propertyId))
-    .limit(1);
-  if (!property) throw new Error(`property not found: ${input.propertyId}`);
-
-  const units = await db
-    .select()
-    .from(unitTypesTable)
-    .where(eq(unitTypesTable.propertyId, input.propertyId));
-
-  const knowledge = await db
-    .select({
-      category: propertyKnowledgeTable.category,
-      content: propertyKnowledgeTable.content,
-    })
-    .from(propertyKnowledgeTable)
-    .where(eq(propertyKnowledgeTable.propertyId, input.propertyId));
+  const { systemPrompt } = await loadPromptContext(input.propertyId);
 
   const intent = classifyIntent(input.inboundText);
-
-  const systemPrompt = buildSystemPrompt({
-    property: {
-      name: property.name,
-      address: property.address,
-      city: property.city,
-      state: property.state,
-      timezone: property.timezone,
-      officeHours: property.officeHours ?? null,
-      welcomeMessage: property.welcomeMessage,
-    },
-    unitTypes: units.map((u) => ({
-      name: u.name,
-      bedrooms: u.bedrooms,
-      bathrooms: u.bathrooms,
-      sqftMin: u.sqftMin,
-      sqftMax: u.sqftMax,
-      priceMin: u.priceMin,
-      priceMax: u.priceMax,
-      availableCount: u.availableCount,
-      deposit: u.deposit,
-      description: u.description,
-      isActive: u.isActive,
-    })),
-    knowledge: knowledge.map((k) => ({ category: k.category, content: k.content })),
-  });
 
   const tools = buildConversationTools({
     conversationId: input.conversationId,
@@ -299,7 +212,7 @@ export async function streamConversationForWidget(
         role: 'assistant',
         authorType: 'ai',
         content: safety.text,
-        channel: 'webchat',
+        channel: input.channel,
         confidenceScore: String(safety.confidence),
         toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
         metadata: safety.flagged ? { safety_flag: true } : null,
@@ -308,4 +221,48 @@ export async function streamConversationForWidget(
   });
 
   return result.toUIMessageStreamResponse();
+}
+
+async function loadPromptContext(propertyId: string) {
+  const [property] = await db
+    .select()
+    .from(propertiesTable)
+    .where(eq(propertiesTable.id, propertyId))
+    .limit(1);
+  if (!property) throw new Error(`property not found: ${propertyId}`);
+
+  const units = await db
+    .select()
+    .from(unitTypesTable)
+    .where(eq(unitTypesTable.propertyId, propertyId));
+
+  const contextSections = await loadPropertyContext(property.slug);
+
+  const systemPrompt = buildSystemPrompt({
+    property: {
+      name: property.name,
+      address: property.address,
+      city: property.city,
+      state: property.state,
+      timezone: property.timezone,
+      officeHours: property.officeHours ?? null,
+      welcomeMessage: property.welcomeMessage,
+    },
+    unitTypes: units.map((u) => ({
+      name: u.name,
+      bedrooms: u.bedrooms,
+      bathrooms: u.bathrooms,
+      sqftMin: u.sqftMin,
+      sqftMax: u.sqftMax,
+      priceMin: u.priceMin,
+      priceMax: u.priceMax,
+      availableCount: u.availableCount,
+      deposit: u.deposit,
+      description: u.description,
+      isActive: u.isActive,
+    })),
+    contextSections,
+  });
+
+  return { property, systemPrompt };
 }

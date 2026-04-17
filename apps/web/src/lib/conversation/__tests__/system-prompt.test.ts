@@ -16,10 +16,9 @@ const input: SystemPromptInput = {
     { name: '2BR/2BA',  bedrooms: 2, bathrooms: '2',   sqftMin: 900, sqftMax: 1000, priceMin: '2000', priceMax: '2300', availableCount: 0, deposit: '750',  description: null, isActive: true },
     { name: 'OLD STUDIO', bedrooms: 0, bathrooms: '1', sqftMin: 400, sqftMax: 450, priceMin: '1200', priceMax: '1300', availableCount: 1, deposit: '500',  description: null, isActive: false },
   ],
-  knowledge: [
-    { category: 'pets',    content: { dogsAllowed: true,  maxWeightLbs: 75, petRent: 35, petDeposit: 300 } },
-    { category: 'parking', content: { spots: 'one per unit', garageFee: 75 } },
-    { category: 'faqs',    content: { items: [{ q: 'Are utilities included?', a: 'Water and trash, yes. Electric is separate.' }] } },
+  contextSections: [
+    { slug: 'policies', title: 'Policies', filename: 'policies.md', body: 'Dogs are allowed up to 75 lbs. Parking is one spot per unit.' },
+    { slug: 'faqs', title: 'FAQs', filename: 'faqs.md', body: 'Q: Are utilities included?\nA: Water and trash are included. Electric is separate.' },
   ],
 };
 
@@ -51,16 +50,16 @@ describe('buildSystemPrompt', () => {
     expect(out).not.toContain('OLD STUDIO');
   });
 
-  it('renders each knowledge category', () => {
+  it('renders each markdown context section', () => {
     const out = buildSystemPrompt(input);
-    expect(out.toLowerCase()).toContain('pets');
+    expect(out).toContain('Policies');
     expect(out).toContain('75'); // dog weight
     expect(out).toContain('Are utilities included?');
   });
 
-  it('instructs the model to keep SMS replies short and include a soft CTA', () => {
+  it('instructs the model to keep chat replies concise and include a tour CTA', () => {
     const out = buildSystemPrompt(input);
-    expect(out.toLowerCase()).toMatch(/2[-\s]3 sentences/);
-    expect(out.toLowerCase()).toContain('soft cta');
+    expect(out.toLowerCase()).toContain('messenger');
+    expect(out.toLowerCase()).toContain('moves the lead toward a tour');
   });
 });

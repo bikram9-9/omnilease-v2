@@ -16,11 +16,16 @@ export default function NewPropertyPage() {
       try {
         await createProperty({
           name: String(formData.get('name') ?? ''),
+          slug: String(formData.get('slug') ?? ''),
           address: String(formData.get('address') ?? ''),
           city: String(formData.get('city') ?? ''),
           state: String(formData.get('state') ?? ''),
           zip: String(formData.get('zip') ?? ''),
           timezone: String(formData.get('timezone') ?? 'America/New_York'),
+          websiteWidgetId: String(formData.get('websiteWidgetId') ?? ''),
+          messengerPageId: String(formData.get('messengerPageId') ?? ''),
+          brandColor: String(formData.get('brandColor') ?? ''),
+          welcomeMessage: String(formData.get('welcomeMessage') ?? ''),
         });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to create property');
@@ -33,6 +38,7 @@ export default function NewPropertyPage() {
       <h1 className="text-2xl font-semibold">New property</h1>
       <form action={onSubmit} className="space-y-4">
         <Field id="name" label="Name" required />
+        <Field id="slug" label="Slug (used for content/properties/<slug>)" />
         <Field id="address" label="Street address" />
         <div className="grid grid-cols-2 gap-4">
           <Field id="city" label="City" />
@@ -41,6 +47,14 @@ export default function NewPropertyPage() {
         <div className="grid grid-cols-2 gap-4">
           <Field id="zip" label="ZIP" maxLength={10} />
           <Field id="timezone" label="Timezone" defaultValue="America/New_York" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field id="websiteWidgetId" label="Website widget ID" />
+          <Field id="messengerPageId" label="Messenger page ID" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field id="brandColor" label="Brand color (#RRGGBB)" />
+          <Field id="welcomeMessage" label="Welcome message" />
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
         <Button type="submit" disabled={isPending}>

@@ -18,7 +18,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       welcomeMessage: properties.welcomeMessage,
     })
     .from(properties)
-    .where(eq(properties.webchatWidgetId, widgetId))
+    .where(eq(properties.websiteWidgetId, widgetId))
     .limit(1);
 
   if (!property) {

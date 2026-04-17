@@ -20,7 +20,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const [property] = await db
     .select({ id: properties.id })
     .from(properties)
-    .where(eq(properties.webchatWidgetId, widgetId))
+    .where(eq(properties.websiteWidgetId, widgetId))
     .limit(1);
   if (!property) return new Response('unknown widget', { status: 404 });
 
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       and(
         eq(conversations.propertyId, property.id),
         eq(conversations.externalId, sessionId),
-        eq(conversations.channel, 'webchat'),
+        eq(conversations.channel, 'website'),
       ),
     )
     .limit(1);
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       .insert(conversations)
       .values({
         propertyId: property.id,
-        channel: 'webchat',
+        channel: 'website',
         externalId: sessionId,
         status: 'active',
       })
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     role: 'user',
     authorType: 'prospect',
     content: text,
-    channel: 'webchat',
+    channel: 'website',
     metadata: { intent: classifyIntent(text) },
   });
 
@@ -68,5 +68,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     conversationId,
     propertyId: property.id,
     inboundText: text,
+    channel: 'website',
   });
 }

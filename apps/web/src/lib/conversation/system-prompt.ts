@@ -1,4 +1,5 @@
 import type { OfficeHours } from '@omnilease/db';
+import type { PropertyContextSection } from '@/lib/property-context';
 
 export type SystemPromptProperty = {
   name: string;
@@ -24,15 +25,10 @@ export type SystemPromptUnitType = {
   isActive: boolean;
 };
 
-export type SystemPromptKnowledge = {
-  category: string;
-  content: unknown;
-};
-
 export type SystemPromptInput = {
   property: SystemPromptProperty;
   unitTypes: SystemPromptUnitType[];
-  knowledge: SystemPromptKnowledge[];
+  contextSections: PropertyContextSection[];
 };
 
 function money(n: string | null): string {
@@ -60,12 +56,12 @@ function unitTypeLine(u: SystemPromptUnitType): string {
   return `- ${parts.join(', ')}`;
 }
 
-function renderKnowledge(k: SystemPromptKnowledge): string {
-  return `### ${k.category}\n${JSON.stringify(k.content, null, 2)}`;
+function renderContextSection(section: PropertyContextSection): string {
+  return `### ${section.title}\n${section.body}`;
 }
 
 export function buildSystemPrompt(input: SystemPromptInput): string {
-  const { property, unitTypes, knowledge } = input;
+  const { property, unitTypes, contextSections } = input;
   const activeUnits = unitTypes.filter((u) => u.isActive);
 
   const sections: string[] = [];
@@ -112,16 +108,16 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
     );
   }
 
-  if (knowledge.length > 0) {
+  if (contextSections.length > 0) {
     sections.push(
-      ['KNOWLEDGE BASE', ...knowledge.map(renderKnowledge)].join('\n\n'),
+      ['PROPERTY CONTEXT (markdown source of truth)', ...contextSections.map(renderContextSection)].join('\n\n'),
     );
   }
 
   sections.push(
     [
       'AVAILABLE ACTIONS',
-      '- Answer questions using only the context above. Never invent pricing, availability, or policies not in the knowledge base.',
+      '- Answer questions using only the context above. Never invent pricing, availability, or policies that are not in the markdown context or unit inventory.',
       '- Call collect_prospect_info when you learn the prospect\'s name, email, phone, move-in date, or unit preference.',
       '- Call check_availability to narrow unit options by bedrooms or max price.',
       '- Call escalate_to_human when the prospect asks for a human, on any fair housing / legal / complaint / pricing negotiation topic, or if you don\'t have enough context to answer confidently.',
@@ -131,9 +127,9 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
   sections.push(
     [
       'RESPONSE FORMAT',
-      '- Keep replies to 2-3 sentences for SMS. Webchat can be slightly longer but stay concise.',
+      '- Keep replies concise for Messenger and website chat. Most responses should stay within 2-4 sentences.',
       '- Reference the property by name naturally — not every message.',
-      '- End with a soft CTA (ask a follow-up, suggest a tour, offer to send more details).',
+      '- End with a soft CTA that moves the lead toward a tour when appropriate.',
       '- Never repeat the prospect\'s question back to them.',
     ].join('\n'),
   );

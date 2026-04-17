@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 
 // Hoisted mocks
 const { streamTextMock } = vi.hoisted(() => ({
@@ -39,16 +41,25 @@ async function seedProperty() {
     .insert(properties)
     .values({
       orgId: org.id,
+      slug: `sunset-ridge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: 'Sunset Ridge',
       timezone: 'America/Chicago',
-      webchatWidgetId: widgetId,
+      websiteWidgetId: widgetId,
     })
     .returning();
-  return { orgId: org.id, propertyId: prop.id, widgetId };
+
+  const contextDir = path.join(process.cwd(), 'content', 'properties', prop.slug);
+  await mkdir(contextDir, { recursive: true });
+  await writeFile(path.join(contextDir, 'overview.md'), '# Sunset Ridge\nA calm garden-style property.', 'utf8');
+  return { orgId: org.id, propertyId: prop.id, propertySlug: prop.slug, widgetId };
 }
 
-async function cleanup(orgId: string) {
+async function cleanup(orgId: string, propertySlug: string) {
   await db.delete(organizations).where(eq(organizations.id, orgId));
+  await rm(path.join(process.cwd(), 'content', 'properties', propertySlug), {
+    recursive: true,
+    force: true,
+  });
 }
 
 // Fake streamText return — provides a .toUIMessageStreamResponse() that yields
@@ -95,7 +106,7 @@ describe('POST /api/widget/chat (integration)', () => {
   });
 
   it('creates a conversation, persists inbound, returns a streaming response', async () => {
-    const { orgId, propertyId, widgetId } = await seedProperty();
+    const { orgId, propertyId, propertySlug, widgetId } = await seedProperty();
     try {
       let capturedOnFinish: ((arg: unknown) => void) | undefined;
       streamTextMock.mockImplementation((opts: Record<string, unknown>) => {
@@ -131,7 +142,7 @@ describe('POST /api/widget/chat (integration)', () => {
         .from(conversations)
         .where(eq(conversations.propertyId, propertyId));
       expect(convs.length).toBe(1);
-      expect(convs[0].channel).toBe('webchat');
+      expect(convs[0].channel).toBe('website');
       expect(convs[0].externalId).toBe('sess_xyz');
 
       // Inbound prospect message persisted with intent
@@ -146,9 +157,9 @@ describe('POST /api/widget/chat (integration)', () => {
       // Assistant message persisted by onFinish
       const assistant = rows.find((r) => r.authorType === 'ai');
       expect(assistant?.content).toContain('welcome dogs');
-      expect(assistant?.channel).toBe('webchat');
+      expect(assistant?.channel).toBe('website');
     } finally {
-      await cleanup(orgId);
+      await cleanup(orgId, propertySlug);
     }
   });
 });

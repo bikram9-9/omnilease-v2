@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { organizations, users, properties, unitTypes, propertyKnowledge } from './schema';
+import { organizations, users, properties, unitTypes } from './schema';
 
 describe('tenancy schema', () => {
   it('organizations has required columns', () => {
@@ -22,8 +22,8 @@ describe('property schema', () => {
     const cols = Object.keys(properties);
     expect(cols).toEqual(
       expect.arrayContaining([
-        'id', 'orgId', 'name', 'address', 'city', 'state', 'zip',
-        'timezone', 'officeHours', 'twilioPhone', 'webchatWidgetId',
+        'id', 'orgId', 'slug', 'name', 'address', 'city', 'state', 'zip',
+        'timezone', 'officeHours', 'websiteWidgetId', 'messengerPageId',
       ]),
     );
   });
@@ -38,10 +38,13 @@ describe('property schema', () => {
     );
   });
 
-  it('propertyKnowledge stores JSONB per category', () => {
-    const cols = Object.keys(propertyKnowledge);
+  it('units remain relational and queryable per property', () => {
+    const cols = Object.keys(unitTypes);
     expect(cols).toEqual(
-      expect.arrayContaining(['id', 'propertyId', 'category', 'content']),
+      expect.arrayContaining([
+        'id', 'propertyId', 'name', 'bedrooms', 'bathrooms',
+        'priceMin', 'priceMax', 'availableCount', 'isActive',
+      ]),
     );
   });
 });

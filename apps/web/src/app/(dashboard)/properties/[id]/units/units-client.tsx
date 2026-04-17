@@ -48,14 +48,14 @@ export function UnitsClient({
   }
 
   function del(id: string) {
-    if (!confirm('Delete this unit type?')) return;
+    if (!confirm('Delete this unit?')) return;
     startTransition(() => deleteUnitType(propertyId, id));
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Unit types</h2>
+        <h2 className="text-xl font-semibold">Units</h2>
         <Dialog
           open={open}
           onOpenChange={(v) => {
@@ -63,10 +63,10 @@ export function UnitsClient({
             if (!v) setEditing(null);
           }}
         >
-          <DialogTrigger render={<Button>Add unit type</Button>} />
+          <DialogTrigger render={<Button>Add unit</Button>} />
           <DialogContent className="bg-zinc-900 border-zinc-800">
             <DialogHeader>
-              <DialogTitle>{editing ? 'Edit' : 'New'} unit type</DialogTitle>
+              <DialogTitle>{editing ? 'Edit' : 'New'} unit</DialogTitle>
             </DialogHeader>
             <form action={submit} className="space-y-3">
               <Field id="name" label="Name" defaultValue={editing?.name} required />
@@ -116,7 +116,7 @@ export function UnitsClient({
       {units.length === 0 ? (
         <Card className="border-zinc-800 bg-zinc-900">
           <CardContent className="py-10 text-center text-zinc-400">
-            No unit types yet.
+            No units yet.
           </CardContent>
         </Card>
       ) : (

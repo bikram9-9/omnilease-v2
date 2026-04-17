@@ -17,18 +17,23 @@ export function EditForm({ property }: { property: Property }) {
       try {
         await updateProperty(property.id, {
           name: String(formData.get('name') ?? ''),
+          slug: String(formData.get('slug') ?? ''),
           address: String(formData.get('address') ?? ''),
           city: String(formData.get('city') ?? ''),
           state: String(formData.get('state') ?? ''),
           zip: String(formData.get('zip') ?? ''),
           timezone: String(formData.get('timezone') ?? 'America/New_York'),
+          websiteWidgetId: String(formData.get('websiteWidgetId') ?? ''),
+          messengerPageId: String(formData.get('messengerPageId') ?? ''),
+          brandColor: String(formData.get('brandColor') ?? ''),
+          welcomeMessage: String(formData.get('welcomeMessage') ?? ''),
         });
       } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     });
   }
 
   function onDelete() {
-    if (!confirm('Delete this property? This removes all units, knowledge, and conversations.')) return;
+    if (!confirm('Delete this property? This removes all units and conversations.')) return;
     startTransition(() => deleteProperty(property.id));
   }
 
@@ -37,6 +42,7 @@ export function EditForm({ property }: { property: Property }) {
       <h1 className="text-2xl font-semibold">Edit property</h1>
       <form action={onSubmit} className="space-y-4">
         <Field id="name" label="Name" defaultValue={property.name} required />
+        <Field id="slug" label="Slug" defaultValue={property.slug} />
         <Field id="address" label="Street address" defaultValue={property.address ?? ''} />
         <div className="grid grid-cols-2 gap-4">
           <Field id="city" label="City" defaultValue={property.city ?? ''} />
@@ -45,6 +51,14 @@ export function EditForm({ property }: { property: Property }) {
         <div className="grid grid-cols-2 gap-4">
           <Field id="zip" label="ZIP" defaultValue={property.zip ?? ''} maxLength={10} />
           <Field id="timezone" label="Timezone" defaultValue={property.timezone} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field id="websiteWidgetId" label="Website widget ID" defaultValue={property.websiteWidgetId ?? ''} />
+          <Field id="messengerPageId" label="Messenger page ID" defaultValue={property.messengerPageId ?? ''} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field id="brandColor" label="Brand color (#RRGGBB)" defaultValue={property.brandColor ?? ''} />
+          <Field id="welcomeMessage" label="Welcome message" defaultValue={property.welcomeMessage ?? ''} />
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
         <div className="flex items-center gap-3">
