@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { Building2, Home } from 'lucide-react';
+import { Building2, Home, MessageSquare } from 'lucide-react';
 
 const nav = [
   { href: '/dashboard', label: 'Overview', icon: Home },
+  { href: '/conversations', label: 'Conversations', icon: MessageSquare },
   { href: '/properties', label: 'Properties', icon: Building2 },
 ];
 
