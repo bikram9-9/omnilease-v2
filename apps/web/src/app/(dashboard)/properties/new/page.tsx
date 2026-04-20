@@ -25,6 +25,7 @@ export default function NewPropertyPage() {
           websiteWidgetId: String(formData.get('websiteWidgetId') ?? ''),
           messengerPageId: String(formData.get('messengerPageId') ?? ''),
           brandColor: String(formData.get('brandColor') ?? ''),
+          escalationEmail: String(formData.get('escalationEmail') ?? ''),
           welcomeMessage: String(formData.get('welcomeMessage') ?? ''),
         });
       } catch (e) {
@@ -54,6 +55,9 @@ export default function NewPropertyPage() {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Field id="brandColor" label="Brand color (#RRGGBB)" />
+          <Field id="escalationEmail" label="Escalation email" type="email" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <Field id="welcomeMessage" label="Welcome message" />
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
@@ -66,7 +70,7 @@ export default function NewPropertyPage() {
 }
 
 function Field(props: {
-  id: string; label: string; required?: boolean; maxLength?: number; defaultValue?: string;
+  id: string; label: string; required?: boolean; maxLength?: number; defaultValue?: string; type?: string;
 }) {
   return (
     <div className="space-y-2">
@@ -74,6 +78,7 @@ function Field(props: {
       <Input
         id={props.id}
         name={props.id}
+        type={props.type}
         required={props.required}
         maxLength={props.maxLength}
         defaultValue={props.defaultValue}

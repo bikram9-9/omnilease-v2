@@ -26,6 +26,7 @@ export function EditForm({ property }: { property: Property }) {
           websiteWidgetId: String(formData.get('websiteWidgetId') ?? ''),
           messengerPageId: String(formData.get('messengerPageId') ?? ''),
           brandColor: String(formData.get('brandColor') ?? ''),
+          escalationEmail: String(formData.get('escalationEmail') ?? ''),
           welcomeMessage: String(formData.get('welcomeMessage') ?? ''),
         });
       } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -58,6 +59,9 @@ export function EditForm({ property }: { property: Property }) {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Field id="brandColor" label="Brand color (#RRGGBB)" defaultValue={property.brandColor ?? ''} />
+          <Field id="escalationEmail" label="Escalation email" type="email" defaultValue={property.escalationEmail ?? ''} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <Field id="welcomeMessage" label="Welcome message" defaultValue={property.welcomeMessage ?? ''} />
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
@@ -71,13 +75,14 @@ export function EditForm({ property }: { property: Property }) {
 }
 
 function Field(props: {
-  id: string; label: string; required?: boolean; maxLength?: number; defaultValue?: string;
+  id: string; label: string; required?: boolean; maxLength?: number; defaultValue?: string; type?: string;
 }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={props.id}>{props.label}</Label>
       <Input
         id={props.id} name={props.id} required={props.required}
+        type={props.type}
         maxLength={props.maxLength} defaultValue={props.defaultValue}
         className="bg-zinc-900 border-zinc-800"
       />

@@ -13,6 +13,7 @@ export const propertyInput = z.object({
   websiteWidgetId: z.string().max(120).optional().or(z.literal('')),
   messengerPageId: z.string().max(120).optional().or(z.literal('')),
   brandColor: z.string().regex(/^#?[0-9A-Fa-f]{6}$/, 'Use a 6-digit hex color').optional().or(z.literal('')),
+  escalationEmail: z.string().email('Enter a valid email address').optional().or(z.literal('')),
   welcomeMessage: z.string().max(500).optional().or(z.literal('')),
 });
 export type PropertyInput = z.infer<typeof propertyInput>;

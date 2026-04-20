@@ -60,6 +60,7 @@ export async function createProperty(input: PropertyInput) {
       websiteWidgetId: emptyToNull(data.websiteWidgetId),
       messengerPageId: emptyToNull(data.messengerPageId),
       brandColor: emptyToNull(data.brandColor),
+      escalationEmail: emptyToNull(data.escalationEmail),
       welcomeMessage: emptyToNull(data.welcomeMessage),
     })
     .returning({ id: properties.id });
@@ -84,6 +85,7 @@ export async function updateProperty(id: string, input: PropertyInput) {
       websiteWidgetId: emptyToNull(data.websiteWidgetId),
       messengerPageId: emptyToNull(data.messengerPageId),
       brandColor: emptyToNull(data.brandColor),
+      escalationEmail: emptyToNull(data.escalationEmail),
       welcomeMessage: emptyToNull(data.welcomeMessage),
       updatedAt: new Date(),
     })

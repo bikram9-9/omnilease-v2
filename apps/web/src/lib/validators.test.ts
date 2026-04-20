@@ -16,4 +16,8 @@ describe('propertyInput', () => {
   it('rejects state longer than 2 chars', () => {
     expect(() => propertyInput.parse({ name: 'x', state: 'California' })).toThrow();
   });
+
+  it('rejects invalid escalation email', () => {
+    expect(() => propertyInput.parse({ name: 'x', escalationEmail: 'not-an-email' })).toThrow();
+  });
 });

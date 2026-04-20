@@ -42,6 +42,7 @@ export default async function PropertyDetailPage({
         <div><dt className="text-zinc-400">Timezone</dt><dd>{p.timezone}</dd></div>
         <div><dt className="text-zinc-400">Website widget ID</dt><dd>{p.websiteWidgetId ?? '—'}</dd></div>
         <div><dt className="text-zinc-400">Messenger page ID</dt><dd>{p.messengerPageId ?? '—'}</dd></div>
+        <div><dt className="text-zinc-400">Escalation email</dt><dd>{p.escalationEmail ?? '—'}</dd></div>
         <div className="col-span-2">
           <dt className="text-zinc-400">Markdown context folder</dt>
           <dd>{getPropertyContextDirectory(p.slug)}</dd>
