@@ -97,7 +97,13 @@ Important variables:
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
+- `EMAIL_FROM`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_SECURE`
 - `APP_URL`
+
+For local email capture with Mailpit, set `SMTP_HOST=127.0.0.1` and `SMTP_PORT=1025`. When `SMTP_HOST` is present, the app sends escalation email over SMTP instead of Resend.
 
 For model access, this repo expects Vercel AI Gateway via OIDC. The intended setup is:
 

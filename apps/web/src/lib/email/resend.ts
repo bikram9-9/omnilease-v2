@@ -1,3 +1,4 @@
+import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
 
 export type SendEscalationEmailInput = {
@@ -9,6 +10,13 @@ export type SendEscalationEmailInput = {
 };
 
 let cached: Resend | null = null;
+let cachedSmtpTransport: nodemailer.Transporter | null = null;
+
+function emailFromAddress(): string {
+  const from = process.env.EMAIL_FROM ?? process.env.RESEND_FROM_EMAIL;
+  if (!from) throw new Error('EMAIL_FROM or RESEND_FROM_EMAIL is not set');
+  return from;
+}
 
 function getClient(): Resend {
   const key = process.env.RESEND_API_KEY;
@@ -19,9 +27,31 @@ function getClient(): Resend {
   return cached;
 }
 
+function getSmtpTransport(): nodemailer.Transporter {
+  const host = process.env.SMTP_HOST;
+  if (!host) {
+    throw new Error('SMTP_HOST is not set');
+  }
+
+  if (!cachedSmtpTransport) {
+    const port = Number(process.env.SMTP_PORT ?? '1025');
+    const secure = process.env.SMTP_SECURE === 'true';
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+
+    cachedSmtpTransport = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: user ? { user, pass: pass ?? '' } : undefined,
+    });
+  }
+
+  return cachedSmtpTransport;
+}
+
 export async function sendEscalationEmail(input: SendEscalationEmailInput): Promise<void> {
-  const from = process.env.RESEND_FROM_EMAIL;
-  if (!from) throw new Error('RESEND_FROM_EMAIL is not set');
+  const from = emailFromAddress();
 
   const subject = `[${input.propertyName}] New escalation — ${input.reason}`;
   const text = [
@@ -34,6 +64,17 @@ export async function sendEscalationEmail(input: SendEscalationEmailInput): Prom
     '',
     '— Omnilease',
   ].join('\n');
+
+  if (process.env.SMTP_HOST) {
+    const transport = getSmtpTransport();
+    await transport.sendMail({
+      from,
+      to: input.to,
+      subject,
+      text,
+    });
+    return;
+  }
 
   const client = getClient();
   const { error } = await client.emails.send({
