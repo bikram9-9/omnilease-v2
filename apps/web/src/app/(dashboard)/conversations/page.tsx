@@ -3,6 +3,8 @@ import { requireOrg } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   formatConversationTime,
+  getAutomationStateClasses,
+  getAutomationStateLabel,
   getChannelClasses,
   getChannelLabel,
   getProspectLabel,
@@ -59,6 +61,11 @@ export default async function ConversationsPage() {
                           className={`rounded-full border px-2 py-1 ${getChannelClasses(conversation.channel)}`}
                         >
                           {getChannelLabel(conversation.channel)}
+                        </span>
+                        <span
+                          className={`rounded-full border px-2 py-1 ${getAutomationStateClasses(conversation.automationState)}`}
+                        >
+                          {getAutomationStateLabel(conversation.automationState)}
                         </span>
                         <span>{conversation.propertyName}</span>
                       </div>

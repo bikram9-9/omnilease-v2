@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { tool } from 'ai';
 import { db, eq, and, lte, sql } from '@omnilease/db';
 import { conversations, unitTypes } from '@omnilease/db';
+import { syncGuestCardForConversation } from '@/lib/guest-cards/service';
 
 export type ConversationToolContext = {
   conversationId: string;
@@ -36,7 +37,32 @@ export function buildConversationTools(ctx: ConversationToolContext) {
         if (args.moveInDate) update.moveInDate = args.moveInDate;
         if (args.unitPreference) update.unitPreference = args.unitPreference;
         if (Object.keys(update).length === 0) return { ok: true, saved: 0 };
-        await db.update(conversations).set(update).where(eq(conversations.id, ctx.conversationId));
+        await db
+          .update(conversations)
+          .set({ ...update, updatedAt: new Date() })
+          .where(eq(conversations.id, ctx.conversationId));
+        const [conversation] = await db
+          .select({
+            channel: conversations.channel,
+            externalId: conversations.externalId,
+          })
+          .from(conversations)
+          .where(eq(conversations.id, ctx.conversationId))
+          .limit(1);
+        if (conversation) {
+          await syncGuestCardForConversation({
+            conversationId: ctx.conversationId,
+            propertyId: ctx.propertyId,
+            channel: conversation.channel,
+            externalId: conversation.externalId,
+            source: 'collect_prospect_info',
+            name: args.name,
+            email: args.email,
+            phone: args.phone,
+            moveInDate: args.moveInDate,
+            unitPreference: args.unitPreference,
+          });
+        }
         return { ok: true, saved: Object.keys(update).length };
       },
     }),

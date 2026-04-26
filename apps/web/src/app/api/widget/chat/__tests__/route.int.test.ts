@@ -22,6 +22,7 @@ import {
   organizations,
   properties,
   conversations,
+  guestCards,
   messages,
 } from '@omnilease/db';
 import { POST } from '../route';
@@ -122,6 +123,9 @@ describe('POST /api/widget/chat (integration)', () => {
           widgetId,
           sessionId: 'sess_xyz',
           text: 'Do you allow dogs?',
+          pageUrl: 'https://property.example.com/floorplans',
+          referrer: 'https://property.example.com/',
+          userAgent: 'Vitest Browser',
         }),
       });
 
@@ -145,6 +149,28 @@ describe('POST /api/widget/chat (integration)', () => {
       expect(convs.length).toBe(1);
       expect(convs[0].channel).toBe('website');
       expect(convs[0].externalId).toBe('sess_xyz');
+      expect(convs[0].metadata).toMatchObject({
+        source: 'website_widget',
+        channel: 'website',
+        widgetId,
+        pageUrl: 'https://property.example.com/floorplans',
+        referrer: 'https://property.example.com/',
+        userAgent: 'Vitest Browser',
+      });
+      expect(convs[0].guestCardId).toEqual(expect.any(String));
+      const guestCardId = convs[0].guestCardId;
+      if (!guestCardId) throw new Error('expected conversation to link to a guest card');
+
+      const [guestCard] = await db
+        .select()
+        .from(guestCards)
+        .where(eq(guestCards.id, guestCardId));
+      expect(guestCard).toMatchObject({
+        orgId,
+        primaryPropertyId: propertyId,
+        firstChannel: 'website',
+        source: 'website_widget',
+      });
 
       // Inbound prospect message persisted with intent
       const rows = await db
@@ -154,11 +180,62 @@ describe('POST /api/widget/chat (integration)', () => {
       const prospect = rows.find((r) => r.authorType === 'prospect');
       expect(prospect?.content).toBe('Do you allow dogs?');
       expect((prospect?.metadata as { intent?: string })?.intent).toBe('pets');
+      expect(prospect?.metadata).toMatchObject({
+        source: 'website_widget',
+        pageUrl: 'https://property.example.com/floorplans',
+        referrer: 'https://property.example.com/',
+      });
 
       // Assistant message persisted by onFinish
       const assistant = rows.find((r) => r.authorType === 'ai');
       expect(assistant?.content).toContain('welcome dogs');
       expect(assistant?.channel).toBe('website');
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('persists inbound messages but does not invoke AI during human takeover', async () => {
+    const { orgId, propertyId, propertySlug, widgetId } = await seedProperty();
+    try {
+      const [conversation] = await db
+        .insert(conversations)
+        .values({
+          propertyId,
+          channel: 'website',
+          externalId: 'sess_takeover',
+          status: 'escalated',
+          automationState: 'human_takeover',
+        })
+        .returning();
+
+      const req = new Request('https://app.example.com/api/widget/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          widgetId,
+          sessionId: 'sess_takeover',
+          text: 'Are you still there?',
+          pageUrl: 'https://property.example.com/contact',
+        }),
+      });
+
+      const res = await POST(req as unknown as NextRequest);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/event-stream');
+      expect(await res.text()).toContain('leasing specialist');
+      expect(streamTextMock).not.toHaveBeenCalled();
+
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversation.id));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        role: 'user',
+        authorType: 'prospect',
+        content: 'Are you still there?',
+      });
     } finally {
       await cleanup(orgId, propertySlug);
     }

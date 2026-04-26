@@ -6,6 +6,9 @@ import { properties } from '@omnilease/db';
 export async function POST(req: NextRequest): Promise<Response> {
   const body = await req.json().catch(() => ({}));
   const widgetId = typeof body?.widgetId === 'string' ? body.widgetId : null;
+  const existingSessionId = typeof body?.sessionId === 'string' && body.sessionId.trim()
+    ? body.sessionId.trim()
+    : null;
   if (!widgetId) {
     return Response.json({ error: 'widgetId required' }, { status: 400 });
   }
@@ -25,10 +28,14 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json({ error: 'unknown widgetId' }, { status: 404 });
   }
 
-  const sessionId = randomUUID();
+  const sessionId = existingSessionId ?? randomUUID();
 
   return Response.json({
     sessionId,
+    source: {
+      channel: 'website',
+      source: 'website_widget',
+    },
     property: {
       name: property.name,
       brandColor: property.brandColor ?? '#111827',

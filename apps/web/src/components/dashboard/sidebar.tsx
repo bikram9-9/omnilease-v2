@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { Building2, Home, MessageSquare } from 'lucide-react';
+import { Building2, Home, MessageSquare, Users } from 'lucide-react';
 
 const nav = [
   { href: '/dashboard', label: 'Overview', icon: Home },
   { href: '/conversations', label: 'Conversations', icon: MessageSquare },
+  { href: '/guest-cards', label: 'Guest cards', icon: Users },
   { href: '/properties', label: 'Properties', icon: Building2 },
 ];
 

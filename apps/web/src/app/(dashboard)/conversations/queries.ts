@@ -9,12 +9,15 @@ import {
   conversations,
   messages,
   escalations,
+  users,
 } from '@omnilease/db';
 import type { ConversationMessage } from '@/components/conversations/message-list';
 
 export type ConversationListItem = {
   id: string;
+  guestCardId: string | null;
   status: typeof conversations.$inferSelect.status;
+  automationState: typeof conversations.$inferSelect.automationState;
   channel: typeof conversations.$inferSelect.channel;
   externalId: string;
   prospectName: string | null;
@@ -22,6 +25,7 @@ export type ConversationListItem = {
   prospectPhone: string | null;
   createdAt: Date;
   escalatedAt: Date | null;
+  assignedAgentName: string | null;
   propertyName: string;
   propertySlug: string;
   latestMessage: {
@@ -33,7 +37,9 @@ export type ConversationListItem = {
 
 export type ConversationDetail = {
   id: string;
+  guestCardId: string | null;
   status: typeof conversations.$inferSelect.status;
+  automationState: typeof conversations.$inferSelect.automationState;
   channel: typeof conversations.$inferSelect.channel;
   externalId: string;
   prospectName: string | null;
@@ -44,6 +50,8 @@ export type ConversationDetail = {
   escalationReason: string | null;
   createdAt: Date;
   escalatedAt: Date | null;
+  assignedAgentId: string | null;
+  assignedAgentName: string | null;
   propertyName: string;
   propertySlug: string;
 };
@@ -60,7 +68,9 @@ export async function listConversationsForOrg(orgId: string): Promise<Conversati
   const rows = await db
     .select({
       id: conversations.id,
+      guestCardId: conversations.guestCardId,
       status: conversations.status,
+      automationState: conversations.automationState,
       channel: conversations.channel,
       externalId: conversations.externalId,
       prospectName: conversations.prospectName,
@@ -68,11 +78,13 @@ export async function listConversationsForOrg(orgId: string): Promise<Conversati
       prospectPhone: conversations.prospectPhone,
       createdAt: conversations.createdAt,
       escalatedAt: conversations.escalatedAt,
+      assignedAgentName: users.name,
       propertyName: properties.name,
       propertySlug: properties.slug,
     })
     .from(conversations)
     .innerJoin(properties, eq(properties.id, conversations.propertyId))
+    .leftJoin(users, eq(users.id, conversations.assignedAgentId))
     .where(eq(properties.orgId, orgId));
 
   if (rows.length === 0) return [];
@@ -125,7 +137,9 @@ export async function getConversationDetailForOrg(
   const [conversation] = await db
     .select({
       id: conversations.id,
+      guestCardId: conversations.guestCardId,
       status: conversations.status,
+      automationState: conversations.automationState,
       channel: conversations.channel,
       externalId: conversations.externalId,
       prospectName: conversations.prospectName,
@@ -136,11 +150,14 @@ export async function getConversationDetailForOrg(
       escalationReason: conversations.escalationReason,
       createdAt: conversations.createdAt,
       escalatedAt: conversations.escalatedAt,
+      assignedAgentId: conversations.assignedAgentId,
+      assignedAgentName: users.name,
       propertyName: properties.name,
       propertySlug: properties.slug,
     })
     .from(conversations)
     .innerJoin(properties, eq(properties.id, conversations.propertyId))
+    .leftJoin(users, eq(users.id, conversations.assignedAgentId))
     .where(and(eq(conversations.id, conversationId), eq(properties.orgId, orgId)))
     .limit(1);
 

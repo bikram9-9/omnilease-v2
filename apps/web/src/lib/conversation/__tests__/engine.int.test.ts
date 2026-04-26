@@ -184,6 +184,7 @@ describe('processConversation (integration)', () => {
         .from(conversations)
         .where(eq(conversations.id, conversationId));
       expect(conv.status).toBe('escalated');
+      expect(conv.automationState).toBe('human_takeover');
 
       const escalationRows = await db
         .select()
@@ -196,6 +197,38 @@ describe('processConversation (integration)', () => {
       const arg = resendSendMock.mock.calls[0][0];
       expect(arg.to).toBe('manager@example.com');
       expect(arg.propertyName).toBe('Sunset Ridge');
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('does not generate an AI reply while human takeover is active', async () => {
+    const { orgId, propertyId, propertySlug, conversationId } = await seedProperty();
+    try {
+      await db
+        .update(conversations)
+        .set({
+          status: 'escalated',
+          automationState: 'human_takeover',
+        })
+        .where(eq(conversations.id, conversationId));
+
+      const result = await processConversation({
+        conversationId,
+        propertyId,
+        inboundText: 'Are you still there?',
+        channel: 'messenger',
+      });
+
+      expect(generateTextMock).not.toHaveBeenCalled();
+      expect(result.assistantText).toBe('');
+      expect(result.escalated).toBe(true);
+
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversationId));
+      expect(rows.length).toBe(1); // seeded prospect message only
     } finally {
       await cleanup(orgId, propertySlug);
     }

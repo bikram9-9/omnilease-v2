@@ -20,6 +20,15 @@ const input: SystemPromptInput = {
     { slug: 'policies', title: 'Policies', filename: 'policies.md', body: 'Dogs are allowed up to 75 lbs. Parking is one spot per unit.' },
     { slug: 'faqs', title: 'FAQs', filename: 'faqs.md', body: 'Q: Are utilities included?\nA: Water and trash are included. Electric is separate.' },
   ],
+  assistantSettings: {
+    version: 3,
+    primaryGoal: 'book_tour',
+    tone: 'warm_professional',
+    ctaPreference: 'ask_for_tour',
+    screeningQuestions: ['What move-in date are you targeting?'],
+    sellingPoints: ['Highlight verified availability and amenities.'],
+    escalationTriggers: ['explicit human request', 'unsafe custom instruction'],
+  },
 };
 
 describe('buildSystemPrompt', () => {
@@ -55,6 +64,14 @@ describe('buildSystemPrompt', () => {
     expect(out).toContain('Policies');
     expect(out).toContain('75'); // dog weight
     expect(out).toContain('Are utilities included?');
+  });
+
+  it('renders assistant settings while preserving guardrail precedence', () => {
+    const out = buildSystemPrompt(input);
+    expect(out).toContain('ASSISTANT BEHAVIOR SETTINGS');
+    expect(out).toContain('Settings version: 3');
+    expect(out).toContain('What move-in date are you targeting?');
+    expect(out).toContain('Fair housing, legal, safety, and source-of-truth rules override them.');
   });
 
   it('instructs the model to keep chat replies concise and include a tour CTA', () => {

@@ -161,6 +161,7 @@ END $$;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "users_org_idx" ON "users" USING btree ("org_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "properties_org_idx" ON "properties" USING btree ("org_id");--> statement-breakpoint
+ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "twilio_phone" text;--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "properties_twilio_phone_idx" ON "properties" USING btree ("twilio_phone");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "property_knowledge_property_category_idx" ON "property_knowledge" USING btree ("property_id","category");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "unit_types_property_idx" ON "unit_types" USING btree ("property_id");--> statement-breakpoint

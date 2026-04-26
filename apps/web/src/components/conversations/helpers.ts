@@ -1,4 +1,5 @@
 import type {
+  ConversationAutomationState,
   ConversationChannel,
   ConversationStatus,
   EscalationPriority,
@@ -78,6 +79,24 @@ export function getStatusClasses(status: ConversationStatus): string {
     case 'closed':
       return 'border-zinc-700 bg-zinc-900 text-zinc-400';
     case 'converted':
+      return 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200';
+  }
+}
+
+export function getAutomationStateLabel(state: ConversationAutomationState): string {
+  switch (state) {
+    case 'ai_active':
+      return 'AI active';
+    case 'human_takeover':
+      return 'Human takeover';
+  }
+}
+
+export function getAutomationStateClasses(state: ConversationAutomationState): string {
+  switch (state) {
+    case 'ai_active':
+      return 'border-cyan-400/20 bg-cyan-400/10 text-cyan-200';
+    case 'human_takeover':
       return 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200';
   }
 }

@@ -1,4 +1,6 @@
 import type { OfficeHours } from '@omnilease/db';
+import type { AssistantSettingsInput } from '@/lib/assistant-settings';
+import { renderAssistantSettingsForPrompt } from '@/lib/assistant-settings';
 import type { PropertyContextSection } from '@/lib/property-context';
 
 export type SystemPromptProperty = {
@@ -29,6 +31,7 @@ export type SystemPromptInput = {
   property: SystemPromptProperty;
   unitTypes: SystemPromptUnitType[];
   contextSections: PropertyContextSection[];
+  assistantSettings?: (AssistantSettingsInput & { version: number }) | null;
 };
 
 function money(n: string | null): string {
@@ -61,7 +64,7 @@ function renderContextSection(section: PropertyContextSection): string {
 }
 
 export function buildSystemPrompt(input: SystemPromptInput): string {
-  const { property, unitTypes, contextSections } = input;
+  const { property, unitTypes, contextSections, assistantSettings } = input;
   const activeUnits = unitTypes.filter((u) => u.isActive);
 
   const sections: string[] = [];
@@ -87,6 +90,10 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
       '- If a question touches protected class topics, call escalate_to_human.',
     ].join('\n'),
   );
+
+  if (assistantSettings) {
+    sections.push(renderAssistantSettingsForPrompt(assistantSettings));
+  }
 
   const addr = [property.address, property.city, property.state].filter(Boolean).join(', ');
   sections.push(
@@ -120,7 +127,7 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
       '- Answer questions using only the context above. Never invent pricing, availability, or policies that are not in the markdown context or unit inventory.',
       '- Call collect_prospect_info when you learn the prospect\'s name, email, phone, move-in date, or unit preference.',
       '- Call check_availability to narrow unit options by bedrooms or max price.',
-      '- Call escalate_to_human when the prospect asks for a human, on any fair housing / legal / complaint / pricing negotiation topic, or if you don\'t have enough context to answer confidently.',
+      '- Call escalate_to_human when the prospect asks for a human, matches an operator-configured escalation trigger, asks any fair housing / legal / complaint / pricing negotiation question, or if you don\'t have enough context to answer confidently.',
     ].join('\n'),
   );
 
