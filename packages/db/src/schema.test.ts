@@ -6,6 +6,7 @@ import {
   unitTypes,
   propertyKnowledgeSections,
   propertyAssistantSettings,
+  propertyTourSettings,
   guestCards,
   guestCardActivities,
   guestCardDuplicateCandidates,
@@ -148,6 +149,16 @@ describe('phase A operations schema', () => {
       expect.arrayContaining([
         'id', 'propertyId', 'version', 'primaryGoal', 'tone', 'ctaPreference',
         'screeningQuestions', 'sellingPoints', 'escalationTriggers',
+      ]),
+    );
+  });
+
+  it('tour settings support configurable scheduling rules', () => {
+    expect(Object.keys(propertyTourSettings)).toEqual(
+      expect.arrayContaining([
+        'id', 'propertyId', 'enabledTourTypes', 'defaultDurationMinutes',
+        'bufferMinutes', 'capacityPerSlot', 'schedulingWindowDays',
+        'tourHours', 'blackoutDates', 'updatedBy',
       ]),
     );
   });

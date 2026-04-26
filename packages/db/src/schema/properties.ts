@@ -95,6 +95,7 @@ export const propertyKnowledgeSections = pgTable(
 export type AssistantPrimaryGoal = 'answer_questions' | 'qualify_lead' | 'book_tour' | 'route_to_human';
 export type AssistantTone = 'warm_professional' | 'concise_direct' | 'luxury_concierge' | 'friendly_casual';
 export type AssistantCtaPreference = 'ask_for_tour' | 'ask_for_contact' | 'offer_human' | 'answer_only';
+export type TourType = 'in_person' | 'virtual' | 'self_guided';
 
 export const propertyAssistantSettings = pgTable(
   'property_assistant_settings',
@@ -117,6 +118,27 @@ export const propertyAssistantSettings = pgTable(
   }),
 );
 
+export const propertyTourSettings = pgTable(
+  'property_tour_settings',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid('property_id').notNull().references(() => properties.id, { onDelete: 'cascade' }),
+    enabledTourTypes: jsonb('enabled_tour_types').$type<TourType[]>().notNull().default(['in_person']),
+    defaultDurationMinutes: integer('default_duration_minutes').notNull().default(30),
+    bufferMinutes: integer('buffer_minutes').notNull().default(15),
+    capacityPerSlot: integer('capacity_per_slot').notNull().default(1),
+    schedulingWindowDays: integer('scheduling_window_days').notNull().default(14),
+    tourHours: jsonb('tour_hours').$type<OfficeHours>().notNull().default({}),
+    blackoutDates: jsonb('blackout_dates').$type<string[]>().notNull().default([]),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    propertyIdx: uniqueIndex('property_tour_settings_property_idx').on(t.propertyId),
+  }),
+);
+
 export type Property = typeof properties.$inferSelect;
 export type NewProperty = typeof properties.$inferInsert;
 export type UnitType = typeof unitTypes.$inferSelect;
@@ -125,3 +147,5 @@ export type PropertyKnowledgeSection = typeof propertyKnowledgeSections.$inferSe
 export type NewPropertyKnowledgeSection = typeof propertyKnowledgeSections.$inferInsert;
 export type PropertyAssistantSettings = typeof propertyAssistantSettings.$inferSelect;
 export type NewPropertyAssistantSettings = typeof propertyAssistantSettings.$inferInsert;
+export type PropertyTourSettings = typeof propertyTourSettings.$inferSelect;
+export type NewPropertyTourSettings = typeof propertyTourSettings.$inferInsert;

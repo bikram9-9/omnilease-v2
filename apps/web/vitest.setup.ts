@@ -18,6 +18,7 @@ if (process.env.DATABASE_URL) {
         to_regclass('public.property_knowledge_sections') is not null
         and to_regclass('public.property_assistant_settings') is not null
         and to_regclass('public.conversation_model_events') is not null
+        and to_regclass('public.property_tour_settings') is not null
         and exists (
           select 1 from information_schema.columns
           where table_schema = 'public'
@@ -29,6 +30,18 @@ if (process.env.DATABASE_URL) {
     if (!readiness[0]?.ready) {
       const migration = await readFile(
         path.resolve(__dirname, '../../packages/db/drizzle/0009_phase_a_knowledge_settings_observability.sql'),
+        'utf8',
+      );
+      await db.execute(sql.raw(migration));
+    }
+
+    const tourReadiness = await db.execute(sql<{ ready: boolean }>`
+      select to_regclass('public.property_tour_settings') is not null as ready
+    `);
+
+    if (!tourReadiness[0]?.ready) {
+      const migration = await readFile(
+        path.resolve(__dirname, '../../packages/db/drizzle/0010_phase_b_tour_settings.sql'),
         'utf8',
       );
       await db.execute(sql.raw(migration));

@@ -83,6 +83,7 @@ export default async function PropertyDetailPage({
           <TabsTrigger value="units" render={<Link href={`/properties/${p.id}/units`}>Units</Link>} />
           <TabsTrigger value="knowledge" render={<Link href={`/properties/${p.id}/knowledge`}>Knowledge</Link>} />
           <TabsTrigger value="assistant" render={<Link href={`/properties/${p.id}/assistant`}>Assistant</Link>} />
+          <TabsTrigger value="tours" render={<Link href={`/properties/${p.id}/tours`}>Tours</Link>} />
         </TabsList>
       </Tabs>
 
