@@ -16,14 +16,14 @@ export default async function PropertiesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Properties</h1>
-        <Button render={<Link href="/properties/new">New property</Link>} />
+        <Button nativeButton={false} render={<Link href="/properties/new">New property</Link>} />
       </div>
 
       {rows.length === 0 ? (
         <Card className="border-zinc-800 bg-zinc-900">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="mb-4 text-zinc-400">No properties yet.</p>
-            <Button render={<Link href="/properties/new">Add your first property</Link>} />
+            <Button nativeButton={false} render={<Link href="/properties/new">Add your first property</Link>} />
           </CardContent>
         </Card>
       ) : (

@@ -6,7 +6,9 @@
   "types": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "test:integration": "vitest run int.test.ts --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests --exclude \"**/*.int.test.ts\""
   },
   "dependencies": {
     "zod": "^3.23.8"

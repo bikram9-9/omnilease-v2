@@ -27,6 +27,7 @@ import {
   properties,
   unitTypes,
   conversations,
+  conversationModelEvents,
   messages,
   escalations,
 } from '@omnilease/db';
@@ -173,7 +174,7 @@ describe('processConversation (integration)', () => {
       const result = await processConversation({
         conversationId,
         propertyId,
-        inboundText: 'Can I talk to a real person please',
+        inboundText: 'Can you help with something complicated about my lease?',
         channel: 'messenger',
       });
 
@@ -184,6 +185,7 @@ describe('processConversation (integration)', () => {
         .from(conversations)
         .where(eq(conversations.id, conversationId));
       expect(conv.status).toBe('escalated');
+      expect(conv.automationState).toBe('human_takeover');
 
       const escalationRows = await db
         .select()
@@ -196,6 +198,82 @@ describe('processConversation (integration)', () => {
       const arg = resendSendMock.mock.calls[0][0];
       expect(arg.to).toBe('manager@example.com');
       expect(arg.propertyName).toBe('Sunset Ridge');
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('preflights emergency escalation before calling the model', async () => {
+    const { orgId, propertyId, propertySlug, conversationId } = await seedProperty();
+    try {
+      const result = await processConversation({
+        conversationId,
+        propertyId,
+        inboundText: 'Emergency maintenance please, water is flooding my apartment right now.',
+        channel: 'messenger',
+      });
+
+      expect(generateTextMock).not.toHaveBeenCalled();
+      expect(result.escalated).toBe(true);
+      expect(result.assistantText).toContain('call 911');
+
+      const [conv] = await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, conversationId));
+      expect(conv.status).toBe('escalated');
+      expect(conv.automationState).toBe('human_takeover');
+      expect(conv.escalationReason).toContain('Emergency');
+
+      const escalationRows = await db
+        .select()
+        .from(escalations)
+        .where(eq(escalations.conversationId, conversationId));
+      expect(escalationRows).toHaveLength(1);
+      expect(escalationRows[0]).toMatchObject({
+        priority: 'urgent',
+        reason: 'Emergency or urgent maintenance request',
+      });
+
+      const assistantRows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversationId));
+      const assistant = assistantRows.find((row) => row.authorType === 'ai');
+      expect(assistant?.content).toContain('property emergency maintenance line');
+      expect(resendSendMock).toHaveBeenCalledTimes(1);
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('does not generate an AI reply while human takeover is active', async () => {
+    const { orgId, propertyId, propertySlug, conversationId } = await seedProperty();
+    try {
+      await db
+        .update(conversations)
+        .set({
+          status: 'escalated',
+          automationState: 'human_takeover',
+        })
+        .where(eq(conversations.id, conversationId));
+
+      const result = await processConversation({
+        conversationId,
+        propertyId,
+        inboundText: 'Are you still there?',
+        channel: 'messenger',
+      });
+
+      expect(generateTextMock).not.toHaveBeenCalled();
+      expect(result.assistantText).toBe('');
+      expect(result.escalated).toBe(true);
+
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversationId));
+      expect(rows.length).toBe(1); // seeded prospect message only
     } finally {
       await cleanup(orgId, propertySlug);
     }
@@ -224,6 +302,133 @@ describe('processConversation (integration)', () => {
       expect(result.escalated).toBe(true);
       expect(result.confidence).toBeLessThan(0.7);
       expect(resendSendMock).toHaveBeenCalledTimes(1);
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('includes captured prospect details and answer source rules in the model prompt', async () => {
+    const { orgId, propertyId, propertySlug, conversationId } = await seedProperty();
+    try {
+      await db
+        .update(conversations)
+        .set({
+          prospectName: 'Jordan Lee',
+          prospectEmail: 'jordan@example.com',
+          moveInDate: '2026-06-01',
+          unitPreference: '1 bed',
+        })
+        .where(eq(conversations.id, conversationId));
+
+      generateTextMock.mockResolvedValue({
+        text: 'Thanks Jordan — I have your details. Would you like to see available tour times?',
+        steps: [],
+      });
+
+      await processConversation({
+        conversationId,
+        propertyId,
+        inboundText: 'Can I book a tour?',
+        channel: 'messenger',
+      });
+
+      const system = generateTextMock.mock.calls[0][0].system as string;
+      expect(system).toContain('KNOWN PROSPECT DETAILS');
+      expect(system).toContain('Name: Jordan Lee');
+      expect(system).toContain('Email: jordan@example.com');
+      expect(system).toContain('Do not ask again');
+      expect(system).toContain('ANSWER QUALITY SOURCE RULES');
+      expect(system).toContain('structured unit inventory is available');
+      expect(system).toContain('no structured application link');
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('preflights unsupported application questions and records answer-quality reason for review', async () => {
+    const { orgId, propertyId, propertySlug, conversationId } = await seedProperty();
+    try {
+      const result = await processConversation({
+        conversationId,
+        propertyId,
+        inboundText: 'Can you send me the application link and tell me the screening requirements?',
+        channel: 'messenger',
+      });
+
+      expect(generateTextMock).not.toHaveBeenCalled();
+      expect(result.escalated).toBe(true);
+      expect(result.assistantText).toContain("don't want to guess");
+      expect(result.confidence).toBeLessThan(0.7);
+
+      const [conv] = await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, conversationId));
+      expect(conv.status).toBe('escalated');
+      expect(conv.escalationReason).toBe('Application request lacks structured application source data');
+      expect(conv.metadata).toMatchObject({
+        lastAnswerQualityReview: {
+          category: 'unsupported_application',
+          reason: 'Application request lacks structured application source data',
+          routedToHuman: true,
+        },
+      });
+
+      const eventRows = await db
+        .select()
+        .from(conversationModelEvents)
+        .where(eq(conversationModelEvents.conversationId, conversationId));
+      expect(eventRows).toHaveLength(1);
+      expect(eventRows[0]).toMatchObject({
+        status: 'skipped',
+        escalationReason: 'Application request lacks structured application source data',
+      });
+      expect(eventRows[0].metadata).toMatchObject({
+        answerQuality: {
+          category: 'unsupported_application',
+          routedToHuman: true,
+        },
+      });
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('replaces repeated captured-detail questions and routes the loop to human review', async () => {
+    const { orgId, propertyId, propertySlug, conversationId } = await seedProperty();
+    try {
+      await db
+        .update(conversations)
+        .set({ prospectEmail: 'jordan@example.com' })
+        .where(eq(conversations.id, conversationId));
+
+      generateTextMock.mockResolvedValue({
+        text: 'Thanks! What is your email address so we can follow up?',
+        steps: [],
+      });
+
+      const result = await processConversation({
+        conversationId,
+        propertyId,
+        inboundText: 'I want to schedule a tour.',
+        channel: 'messenger',
+      });
+
+      expect(result.escalated).toBe(true);
+      expect(result.assistantText).toContain('I already have your email');
+
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversationId));
+      const assistantRow = rows.find((row) => row.authorType === 'ai');
+      expect(assistantRow?.content).toContain('I already have your email');
+      expect(assistantRow?.metadata).toMatchObject({
+        answerQuality: {
+          category: 'repeated_captured_detail',
+          routedToHuman: true,
+        },
+      });
     } finally {
       await cleanup(orgId, propertySlug);
     }

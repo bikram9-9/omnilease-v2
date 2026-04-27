@@ -27,6 +27,7 @@ Latest shipped update: `April 16, 2026`
 
 ## What Is Next
 
+- Phase 0 acquisition system: content workflow, paid social lead capture, AI DM response, Google review alerts, and funnel reporting
 - Messenger webhook ingestion and reply flow
 - Lead capture normalization across website and Messenger conversations
 - Operator inbox for conversations, escalations, and human takeover
@@ -153,8 +154,9 @@ The website chat widget is served from `apps/web/public/widget.js` and currently
 - Floating launcher + chat panel UI
 - Session initialization through `POST /api/widget/session`
 - Streaming assistant replies through `POST /api/widget/chat`
-- Browser `localStorage` session persistence
+- Browser `localStorage` session and transcript persistence
 - Per-property branding and welcome message
+- Dashboard install snippets and property-level preview frames
 
 Example embed:
 
@@ -166,20 +168,42 @@ Example embed:
 ></script>
 ```
 
+For browser smoke testing, run the app locally. The script uses deterministic
+local defaults and seeds a smoke account/property/widget when local Supabase
+service credentials are available:
+
+```bash
+BASE_URL=http://localhost:3000 pnpm e2e:smoke
+```
+
+Default smoke values are `e2e-smoke@omnilease.local`,
+`OmniLeaseE2E!2026`, and `wdg_e2e_smoke`. Override `E2E_EMAIL`,
+`E2E_PASSWORD`, or `E2E_WIDGET_ID` only when targeting a different environment.
+For remote Supabase targets, automatic database seeding is blocked unless
+`E2E_ALLOW_REMOTE_SEED=1` is set; the browser flow can still sign up with the
+same smoke credentials when the environment allows self-serve signup.
+
 ## Useful Commands
 
 ```bash
 pnpm dev
 pnpm build
 pnpm test
+pnpm test:unit
+pnpm test:integration
 pnpm typecheck
+pnpm ci:verify
+BASE_URL=http://localhost:3000 pnpm e2e:smoke
 pnpm web:dev
 pnpm db:migrate
 pnpm db:studio
 ```
 
+See `docs/testing-standards.md` for the Linear story completion proof required before moving implementation stories to Done.
+
 ## Current Roadmap
 
+- `Phase 0`: AI-driven leasing acquisition, content distribution, review alerts, and performance tracking
 - `Phase 1a`: core engine and database foundation
 - `Phase 1b`: website widget channel
 - `Phase 1c`: dashboard conversations, escalations, analytics, and human takeover

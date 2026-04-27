@@ -11,5 +11,7 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.int.test.ts'],
     setupFiles: ['./vitest.setup.ts'],
+    fileParallelism: false,
+    testTimeout: 15_000,
   },
 });

@@ -9,6 +9,12 @@ export type SendEscalationEmailInput = {
   conversationUrl: string;
 };
 
+export type SendOperationalEmailInput = {
+  to: string;
+  subject: string;
+  text: string;
+};
+
 let cached: Resend | null = null;
 let cachedSmtpTransport: nodemailer.Transporter | null = null;
 
@@ -51,8 +57,6 @@ function getSmtpTransport(): nodemailer.Transporter {
 }
 
 export async function sendEscalationEmail(input: SendEscalationEmailInput): Promise<void> {
-  const from = emailFromAddress();
-
   const subject = `[${input.propertyName}] New escalation — ${input.reason}`;
   const text = [
     `A conversation at ${input.propertyName} was escalated to a human.`,
@@ -65,13 +69,24 @@ export async function sendEscalationEmail(input: SendEscalationEmailInput): Prom
     '— Omnilease',
   ].join('\n');
 
+  await sendOperationalEmail({ to: input.to, subject, text });
+}
+
+export async function sendOperationalEmail(input: SendOperationalEmailInput): Promise<void> {
+  if (process.env.EMAIL_DELIVERY_MODE === 'log') {
+    console.log(`Email delivery log: ${input.to} - ${input.subject}`);
+    return;
+  }
+
+  const from = emailFromAddress();
+
   if (process.env.SMTP_HOST) {
     const transport = getSmtpTransport();
     await transport.sendMail({
       from,
       to: input.to,
-      subject,
-      text,
+      subject: input.subject,
+      text: input.text,
     });
     return;
   }
@@ -80,8 +95,8 @@ export async function sendEscalationEmail(input: SendEscalationEmailInput): Prom
   const { error } = await client.emails.send({
     from,
     to: input.to,
-    subject,
-    text,
+    subject: input.subject,
+    text: input.text,
   });
   if (error) throw new Error(`Resend error: ${error.message}`);
 }

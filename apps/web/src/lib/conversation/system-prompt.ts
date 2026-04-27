@@ -1,4 +1,6 @@
-import type { OfficeHours } from '@omnilease/db';
+import type { FeeLineItem, OfficeHours } from '@omnilease/db';
+import type { AssistantSettingsInput } from '@/lib/assistant-settings';
+import { renderAssistantSettingsForPrompt } from '@/lib/assistant-settings';
 import type { PropertyContextSection } from '@/lib/property-context';
 
 export type SystemPromptProperty = {
@@ -9,6 +11,14 @@ export type SystemPromptProperty = {
   timezone: string;
   officeHours: OfficeHours | null;
   welcomeMessage: string | null;
+  applicationUrl: string | null;
+  applicationFee: string | null;
+  quoteDisclaimer: string | null;
+  leasingSpecials: string | null;
+  recurringFees: FeeLineItem[];
+  oneTimeFees: FeeLineItem[];
+  petFees: FeeLineItem[];
+  parkingFees: FeeLineItem[];
 };
 
 export type SystemPromptUnitType = {
@@ -21,6 +31,10 @@ export type SystemPromptUnitType = {
   priceMax: string | null;
   availableCount: number;
   deposit: string | null;
+  recurringFees: FeeLineItem[];
+  oneTimeFees: FeeLineItem[];
+  specials: string | null;
+  quoteDisclaimer: string | null;
   description: string | null;
   isActive: boolean;
 };
@@ -29,6 +43,7 @@ export type SystemPromptInput = {
   property: SystemPromptProperty;
   unitTypes: SystemPromptUnitType[];
   contextSections: PropertyContextSection[];
+  assistantSettings?: (AssistantSettingsInput & { version: number }) | null;
 };
 
 function money(n: string | null): string {
@@ -56,12 +71,20 @@ function unitTypeLine(u: SystemPromptUnitType): string {
   return `- ${parts.join(', ')}`;
 }
 
+function feeSummary(label: string, fees: FeeLineItem[]): string | null {
+  if (fees.length === 0) return null;
+  const rendered = fees.map((fee) => (
+    `${fee.label}: ${money(String(fee.amount))}${fee.required === false ? ' optional' : ''}`
+  )).join('; ');
+  return `${label}: ${rendered}`;
+}
+
 function renderContextSection(section: PropertyContextSection): string {
   return `### ${section.title}\n${section.body}`;
 }
 
 export function buildSystemPrompt(input: SystemPromptInput): string {
-  const { property, unitTypes, contextSections } = input;
+  const { property, unitTypes, contextSections, assistantSettings } = input;
   const activeUnits = unitTypes.filter((u) => u.isActive);
 
   const sections: string[] = [];
@@ -88,6 +111,10 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
     ].join('\n'),
   );
 
+  if (assistantSettings) {
+    sections.push(renderAssistantSettingsForPrompt(assistantSettings));
+  }
+
   const addr = [property.address, property.city, property.state].filter(Boolean).join(', ');
   sections.push(
     [
@@ -108,6 +135,22 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
     );
   }
 
+  sections.push(
+    [
+      'QUOTE AND APPLICATION MVP',
+      property.applicationUrl ? `Application link: ${property.applicationUrl}` : 'Application link: not configured',
+      property.applicationFee ? `Application fee: ${money(property.applicationFee)}` : 'Application fee: not configured',
+      feeSummary('Property monthly fees', property.recurringFees),
+      feeSummary('Property one-time fees', property.oneTimeFees),
+      feeSummary('Pet fees', property.petFees),
+      feeSummary('Parking fees', property.parkingFees),
+      property.leasingSpecials ? `Leasing specials: ${property.leasingSpecials}` : null,
+      property.quoteDisclaimer ? `Quote disclaimer: ${property.quoteDisclaimer}` : null,
+      'Use get_quote before giving estimated monthly totals, move-in fee totals, or application links.',
+      'This is an MVP estimate, not jurisdiction-aware fee transparency.',
+    ].filter(Boolean).join('\n'),
+  );
+
   if (contextSections.length > 0) {
     sections.push(
       ['PROPERTY CONTEXT (markdown source of truth)', ...contextSections.map(renderContextSection)].join('\n\n'),
@@ -120,7 +163,15 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
       '- Answer questions using only the context above. Never invent pricing, availability, or policies that are not in the markdown context or unit inventory.',
       '- Call collect_prospect_info when you learn the prospect\'s name, email, phone, move-in date, or unit preference.',
       '- Call check_availability to narrow unit options by bedrooms or max price.',
-      '- Call escalate_to_human when the prospect asks for a human, on any fair housing / legal / complaint / pricing negotiation topic, or if you don\'t have enough context to answer confidently.',
+      '- Call get_quote before answering total-cost, fee breakdown, deposit, special, or application-link questions.',
+      '- If get_quote reports missing rent, fees, application link, or disclaimer data, say the estimate is incomplete and call escalate_to_human when the prospect needs a firm quote.',
+      '- Call get_tour_slots before offering exact tour times. Offer only slots returned by the tool.',
+      '- Before calling book_tour, collect the prospect\'s name and at least one contact method: email or phone.',
+      '- Call book_tour only after the prospect chooses a specific returned slot. If booking fails because the slot is stale or unavailable, apologize briefly and offer another returned slot.',
+      '- Call reschedule_tour or cancel_tour when the prospect asks to move or cancel an existing booked tour.',
+      '- Call escalate_to_human when the prospect asks for a human, representative, manager, or supervisor.',
+      '- Call escalate_to_human for emergency, urgent, maintenance emergency, complaint, legal, privacy, billing/payment, application-blocking, fair housing, pricing negotiation, or unsupported sensitive workflows.',
+      '- After escalation, do not continue qualification, tour booking, or repetitive follow-up questions.',
     ].join('\n'),
   );
 

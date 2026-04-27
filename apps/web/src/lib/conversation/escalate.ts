@@ -29,6 +29,7 @@ export async function escalateConversation(input: EscalateInput): Promise<void> 
     .update(conversations)
     .set({
       status: 'escalated',
+      automationState: 'human_takeover',
       escalatedAt: new Date(),
       escalationReason: input.reason,
     })

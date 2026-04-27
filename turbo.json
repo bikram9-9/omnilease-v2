@@ -22,6 +22,12 @@
       "persistent": true
     },
     "lint": {},
+    "test:integration": {
+      "dependsOn": ["^build"]
+    },
+    "test:unit": {
+      "dependsOn": ["^build"]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },
