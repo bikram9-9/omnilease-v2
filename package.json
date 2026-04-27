@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "ci:verify": "turbo run lint typecheck test:unit test:integration build --force",
+    "ci:verify": "turbo run lint --force && turbo run build --force && turbo run typecheck --force && turbo run test:unit --force && turbo run test:integration --force",
     "dev": "turbo run dev",
     "e2e:smoke": "./scripts/e2e-playwright-flows.sh",
     "lint": "turbo run lint",

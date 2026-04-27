@@ -114,6 +114,66 @@ export function getPriorityClasses(priority: EscalationPriority): string {
   }
 }
 
+export function formatEscalationAge(value: Date | string, now = new Date()): string {
+  const createdAt = typeof value === 'string' ? new Date(value) : value;
+  const minutes = Math.max(0, Math.floor((now.getTime() - createdAt.getTime()) / 60000));
+  if (minutes < 1) return '<1m';
+  if (minutes < 60) return `${minutes}m`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours < 24) return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`;
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours === 0 ? `${days}d` : `${days}d ${remainingHours}h`;
+}
+
+export function getEscalationSlaLabel(
+  priority: EscalationPriority,
+  createdAt: Date | string,
+  resolvedAt?: Date | string | null,
+): string {
+  if (resolvedAt) return 'Resolved';
+
+  const age = formatEscalationAge(createdAt);
+  const targetMinutes = getEscalationTargetMinutes(priority);
+  const created = typeof createdAt === 'string' ? new Date(createdAt) : createdAt;
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - created.getTime()) / 60000));
+  const target = targetMinutes < 60 ? `${targetMinutes}m` : `${Math.floor(targetMinutes / 60)}h`;
+
+  return elapsedMinutes > targetMinutes
+    ? `SLA overdue ${age}`
+    : `SLA ${age} / ${target}`;
+}
+
+export function getEscalationSlaClasses(
+  priority: EscalationPriority,
+  createdAt: Date | string,
+  resolvedAt?: Date | string | null,
+): string {
+  if (resolvedAt) return 'text-zinc-500';
+
+  const created = typeof createdAt === 'string' ? new Date(createdAt) : createdAt;
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - created.getTime()) / 60000));
+  if (elapsedMinutes > getEscalationTargetMinutes(priority)) return 'text-rose-300';
+  if (priority === 'urgent' || priority === 'high') return 'text-orange-200';
+  return 'text-zinc-400';
+}
+
+function getEscalationTargetMinutes(priority: EscalationPriority): number {
+  switch (priority) {
+    case 'urgent':
+      return 15;
+    case 'high':
+      return 60;
+    case 'normal':
+      return 240;
+    case 'low':
+      return 1440;
+  }
+}
+
 export function getAuthorLabel(authorType: MessageAuthorType): string {
   switch (authorType) {
     case 'prospect':

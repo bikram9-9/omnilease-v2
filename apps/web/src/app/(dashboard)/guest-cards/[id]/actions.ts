@@ -6,6 +6,7 @@ import {
   mergeGuestCardsForOrg,
   revertGuestCardMergeForOrg,
 } from '@/lib/guest-cards/service';
+import { cancelScheduledTourNotificationForOrg } from '@/lib/tour-notifications';
 
 export async function mergeDuplicateGuestCardAction(formData: FormData) {
   const { orgId, userId } = await requireOrg();
@@ -37,5 +38,18 @@ export async function revertGuestCardMergeAction(formData: FormData) {
   }
 
   await revertGuestCardMergeForOrg({ orgId, userId, mergeAuditId });
+  revalidatePath(`/guest-cards/${guestCardId}`);
+}
+
+export async function cancelScheduledFollowUpAction(formData: FormData) {
+  const { orgId } = await requireOrg();
+  const guestCardId = String(formData.get('guestCardId') ?? '');
+  const jobId = String(formData.get('jobId') ?? '');
+
+  if (!guestCardId || !jobId) {
+    throw new Error('Missing scheduled follow-up');
+  }
+
+  await cancelScheduledTourNotificationForOrg({ orgId, guestCardId, jobId });
   revalidatePath(`/guest-cards/${guestCardId}`);
 }

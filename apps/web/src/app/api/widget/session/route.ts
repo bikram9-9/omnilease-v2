@@ -2,6 +2,7 @@ import { type NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { db, eq } from '@omnilease/db';
 import { properties } from '@omnilease/db';
+import { buildWidgetDisclosureConfig } from '@/lib/widget-disclosure';
 
 export async function POST(req: NextRequest): Promise<Response> {
   const body = await req.json().catch(() => ({}));
@@ -19,6 +20,13 @@ export async function POST(req: NextRequest): Promise<Response> {
       name: properties.name,
       brandColor: properties.brandColor,
       welcomeMessage: properties.welcomeMessage,
+      aiDisclosure: properties.aiDisclosure,
+      privacyNoticeUrl: properties.privacyNoticeUrl,
+      termsUrl: properties.termsUrl,
+      privacyDisclosureText: properties.privacyDisclosureText,
+      contactFallbackLabel: properties.contactFallbackLabel,
+      contactFallbackUrl: properties.contactFallbackUrl,
+      contactFallbackText: properties.contactFallbackText,
     })
     .from(properties)
     .where(eq(properties.websiteWidgetId, widgetId))
@@ -29,6 +37,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   const sessionId = existingSessionId ?? randomUUID();
+  const disclosure = buildWidgetDisclosureConfig(property);
 
   return Response.json({
     sessionId,
@@ -40,6 +49,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       name: property.name,
       brandColor: property.brandColor ?? '#111827',
       welcomeMessage: property.welcomeMessage ?? `Hi there — how can I help you today?`,
+      initialAssistantMessage: disclosure.initialAssistantMessage,
     },
+    disclosure,
   });
 }

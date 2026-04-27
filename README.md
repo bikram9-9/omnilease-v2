@@ -27,6 +27,7 @@ Latest shipped update: `April 16, 2026`
 
 ## What Is Next
 
+- Phase 0 acquisition system: content workflow, paid social lead capture, AI DM response, Google review alerts, and funnel reporting
 - Messenger webhook ingestion and reply flow
 - Lead capture normalization across website and Messenger conversations
 - Operator inbox for conversations, escalations, and human takeover
@@ -202,6 +203,7 @@ See `docs/testing-standards.md` for the Linear story completion proof required b
 
 ## Current Roadmap
 
+- `Phase 0`: AI-driven leasing acquisition, content distribution, review alerts, and performance tracking
 - `Phase 1a`: core engine and database foundation
 - `Phase 1b`: website widget channel
 - `Phase 1c`: dashboard conversations, escalations, analytics, and human takeover

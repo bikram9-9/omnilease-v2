@@ -16,8 +16,19 @@ import { loadHistory } from './history';
 import { buildConversationTools } from './tools';
 import { applySafetyFilter } from './safety';
 import { classifyIntent } from './intent';
+import { classifyEscalationTrigger } from './escalation-intent';
 import { escalateConversation } from './escalate';
 import { getConversationAiGate } from './takeover';
+import {
+  buildAnswerSourceEvidence,
+  classifyUnsupportedWorkflow,
+  detectRepeatedCapturedDetailQuestion,
+  getAnswerQualityMetadata,
+  renderAnswerSourceRules,
+  renderCapturedProspectMemory,
+  type AnswerQualityGuardrail,
+  type CapturedProspectDetails,
+} from './answer-quality';
 import { DEFAULT_MODEL, PROMPT_VERSION } from './model-config';
 
 export type ProcessConversationInput = {
@@ -52,8 +63,62 @@ export async function processConversation(
     };
   }
 
-  const promptContext = await loadPromptContext(input.propertyId);
+  const escalationTrigger = classifyEscalationTrigger(input.inboundText);
+  if (escalationTrigger) {
+    await escalateConversation({
+      conversationId: input.conversationId,
+      propertyId: input.propertyId,
+      reason: escalationTrigger.reason,
+      priority: escalationTrigger.priority,
+    });
+
+    await db.insert(messagesTable).values({
+      conversationId: input.conversationId,
+      role: 'assistant',
+      authorType: 'ai',
+      content: escalationTrigger.notice,
+      channel: input.channel,
+      confidenceScore: '1.00',
+      metadata: {
+        escalationCategory: escalationTrigger.category,
+        escalationReason: escalationTrigger.reason,
+        model: 'rule_based_escalation_gate',
+      },
+    });
+
+    return {
+      assistantText: escalationTrigger.notice,
+      escalated: true,
+      intent,
+      confidence: 1,
+    };
+  }
+
+  const promptContext = await loadPromptContext(input.propertyId, input.conversationId);
   const startedAt = Date.now();
+
+  const unsupportedWorkflow = classifyUnsupportedWorkflow(
+    input.inboundText,
+    promptContext.answerSourceEvidence,
+  );
+  if (unsupportedWorkflow) {
+    await persistAnswerQualityEscalation({
+      conversationId: input.conversationId,
+      propertyId: input.propertyId,
+      channel: input.channel,
+      guardrail: unsupportedWorkflow,
+      assistantSettingsVersion: promptContext.assistantSettingsVersion,
+      intent,
+      startedAt,
+    });
+
+    return {
+      assistantText: unsupportedWorkflow.notice,
+      escalated: true,
+      intent,
+      confidence: unsupportedWorkflow.confidence,
+    };
+  }
 
   // 2. Classify intent for the system prompt hint and the return value.
   //    The route handler in Plan 1b (which owns the inbound message row) is
@@ -77,7 +142,7 @@ export async function processConversation(
   //    for UIMessages coming from useChat).
   const result = await generateText({
     model: DEFAULT_MODEL,
-    system: `${promptContext.systemPrompt}\n\n[Detected intent: ${intent}]`,
+    system: `${promptContext.systemPrompt}\n\n${promptContext.memoryPrompt}\n\n${promptContext.answerSourceRules}\n\n[Detected intent: ${intent}]`,
     messages: historyWithNew.map((t) => ({ role: t.role, content: t.content })),
     tools,
     stopWhen: stepCountIs(4),
@@ -104,6 +169,20 @@ export async function processConversation(
   // 7. Run the final text through the safety filter.
   const safety = applySafetyFilter(result.text);
 
+  const repeatedDetailGuardrail = detectRepeatedCapturedDetailQuestion(
+    safety.text,
+    promptContext.capturedDetails,
+  );
+  if (!escalated && repeatedDetailGuardrail) {
+    await escalateConversation({
+      conversationId: input.conversationId,
+      propertyId: input.propertyId,
+      reason: repeatedDetailGuardrail.reason,
+      priority: repeatedDetailGuardrail.priority,
+    });
+    escalated = true;
+  }
+
   // 8. Auto-escalate on low confidence, if not already escalated.
   if (!escalated && safety.autoEscalate) {
     await escalateConversation({
@@ -119,16 +198,19 @@ export async function processConversation(
   // toolCalls serialised as JSON — each step's calls are flatted into one array.
   const allToolCalls = result.steps.flatMap((s) => s.toolCalls);
 
+  const finalText = repeatedDetailGuardrail?.notice ?? safety.text;
+  const finalConfidence = repeatedDetailGuardrail?.confidence ?? safety.confidence;
   const [message] = await db.insert(messagesTable).values({
     conversationId: input.conversationId,
     role: 'assistant',
     authorType: 'ai',
-    content: safety.text,
+    content: finalText,
     channel: input.channel,
-    confidenceScore: String(safety.confidence),
+    confidenceScore: String(finalConfidence),
     toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
     metadata: {
       ...(safety.flagged ? { safety_flag: true } : {}),
+      ...(repeatedDetailGuardrail ? getAnswerQualityMetadata(repeatedDetailGuardrail) : {}),
       model: DEFAULT_MODEL,
       promptVersion: PROMPT_VERSION,
       assistantSettingsVersion: promptContext.assistantSettingsVersion,
@@ -145,16 +227,17 @@ export async function processConversation(
     assistantSettingsVersion: promptContext.assistantSettingsVersion,
     toolCalls: allToolCalls,
     safety,
-    confidence: safety.confidence,
+    confidence: finalConfidence,
     usage: getUsage(result),
-    escalationReason: escalated ? 'tool_or_safety_escalation' : null,
+    escalationReason: repeatedDetailGuardrail?.reason ?? (escalated ? 'tool_or_safety_escalation' : null),
+    answerQualityGuardrail: repeatedDetailGuardrail,
   });
 
   return {
-    assistantText: safety.text,
+    assistantText: finalText,
     escalated,
     intent,
-    confidence: safety.confidence,
+    confidence: finalConfidence,
   };
 }
 
@@ -183,9 +266,30 @@ export type StreamConversationInput = {
 export async function streamConversationForWidget(
   input: StreamConversationInput,
 ): Promise<Response> {
-  const promptContext = await loadPromptContext(input.propertyId);
+  const promptContext = await loadPromptContext(input.propertyId, input.conversationId);
 
   const intent = classifyIntent(input.inboundText);
+
+  const unsupportedWorkflow = classifyUnsupportedWorkflow(
+    input.inboundText,
+    promptContext.answerSourceEvidence,
+  );
+  if (unsupportedWorkflow) {
+    await persistAnswerQualityEscalation({
+      conversationId: input.conversationId,
+      propertyId: input.propertyId,
+      channel: input.channel,
+      guardrail: unsupportedWorkflow,
+      assistantSettingsVersion: promptContext.assistantSettingsVersion,
+      intent,
+      startedAt: Date.now(),
+    });
+
+    return new Response(
+      `data: ${JSON.stringify({ type: 'text-delta', delta: unsupportedWorkflow.notice })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }
 
   const tools = buildConversationTools({
     conversationId: input.conversationId,
@@ -200,7 +304,7 @@ export async function streamConversationForWidget(
 
   const result = streamText({
     model: DEFAULT_MODEL,
-    system: `${promptContext.systemPrompt}\n\n[Detected intent: ${intent}]`,
+    system: `${promptContext.systemPrompt}\n\n${promptContext.memoryPrompt}\n\n${promptContext.answerSourceRules}\n\n[Detected intent: ${intent}]`,
     messages: historyWithNew.map((t) => ({ role: t.role, content: t.content })),
     tools,
     stopWhen: stepCountIs(4),
@@ -230,6 +334,20 @@ export async function streamConversationForWidget(
       }
 
       const safety = applySafetyFilter(text);
+      const repeatedDetailGuardrail = detectRepeatedCapturedDetailQuestion(
+        safety.text,
+        promptContext.capturedDetails,
+      );
+      if (!escalated && repeatedDetailGuardrail) {
+        await escalateConversation({
+          conversationId: input.conversationId,
+          propertyId: input.propertyId,
+          reason: repeatedDetailGuardrail.reason,
+          priority: repeatedDetailGuardrail.priority,
+        });
+        escalated = true;
+      }
+
       if (!escalated && safety.autoEscalate) {
         await escalateConversation({
           conversationId: input.conversationId,
@@ -237,19 +355,23 @@ export async function streamConversationForWidget(
           reason: `Low confidence response (score ${safety.confidence.toFixed(2)})`,
           priority: 'normal',
         });
+        escalated = true;
       }
 
       const allToolCalls = steps.flatMap((s) => s.toolCalls);
+      const finalText = repeatedDetailGuardrail?.notice ?? safety.text;
+      const finalConfidence = repeatedDetailGuardrail?.confidence ?? safety.confidence;
       const [message] = await db.insert(messagesTable).values({
         conversationId: input.conversationId,
         role: 'assistant',
         authorType: 'ai',
-        content: safety.text,
+        content: finalText,
         channel: input.channel,
-        confidenceScore: String(safety.confidence),
+        confidenceScore: String(finalConfidence),
         toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
         metadata: {
           ...(safety.flagged ? { safety_flag: true } : {}),
+          ...(repeatedDetailGuardrail ? getAnswerQualityMetadata(repeatedDetailGuardrail) : {}),
           model: DEFAULT_MODEL,
           promptVersion: PROMPT_VERSION,
           assistantSettingsVersion: promptContext.assistantSettingsVersion,
@@ -266,9 +388,10 @@ export async function streamConversationForWidget(
         assistantSettingsVersion: promptContext.assistantSettingsVersion,
         toolCalls: allToolCalls,
         safety,
-        confidence: safety.confidence,
+        confidence: finalConfidence,
         usage: getUsage(finished),
-        escalationReason: escalated ? 'tool_or_safety_escalation' : null,
+        escalationReason: repeatedDetailGuardrail?.reason ?? (escalated ? 'tool_or_safety_escalation' : null),
+        answerQualityGuardrail: repeatedDetailGuardrail,
       });
     },
   });
@@ -276,7 +399,7 @@ export async function streamConversationForWidget(
   return result.toUIMessageStreamResponse();
 }
 
-async function loadPromptContext(propertyId: string) {
+async function loadPromptContext(propertyId: string, conversationId: string) {
   const [property] = await db
     .select()
     .from(propertiesTable)
@@ -297,6 +420,33 @@ async function loadPromptContext(propertyId: string) {
 
   const assistantSettings = normalizeAssistantSettings(settingsRow);
   const contextSections = await loadPropertyContext(property.slug, property.id);
+  const [conversation] = await db
+    .select({
+      prospectName: conversationsTable.prospectName,
+      prospectEmail: conversationsTable.prospectEmail,
+      prospectPhone: conversationsTable.prospectPhone,
+      moveInDate: conversationsTable.moveInDate,
+      unitPreference: conversationsTable.unitPreference,
+    })
+    .from(conversationsTable)
+    .where(eq(conversationsTable.id, conversationId))
+    .limit(1);
+
+  const capturedDetails: CapturedProspectDetails = {
+    prospectName: conversation?.prospectName ?? null,
+    prospectEmail: conversation?.prospectEmail ?? null,
+    prospectPhone: conversation?.prospectPhone ?? null,
+    moveInDate: conversation?.moveInDate ?? null,
+    unitPreference: conversation?.unitPreference ?? null,
+  };
+
+  const answerSourceEvidence = buildAnswerSourceEvidence({
+    activeUnitCount: units.filter((unit) => unit.isActive).length,
+    contextSections,
+    hasStructuredQuoteData: hasStructuredQuoteData(property, units),
+    hasStructuredApplicationData: Boolean(property.applicationUrl),
+    hasStructuredFeeData: hasStructuredFeeData(property, units),
+  });
 
   const systemPrompt = buildSystemPrompt({
     property: {
@@ -307,6 +457,14 @@ async function loadPromptContext(propertyId: string) {
       timezone: property.timezone,
       officeHours: property.officeHours ?? null,
       welcomeMessage: property.welcomeMessage,
+      applicationUrl: property.applicationUrl,
+      applicationFee: property.applicationFee,
+      quoteDisclaimer: property.quoteDisclaimer,
+      leasingSpecials: property.leasingSpecials,
+      recurringFees: property.recurringFees,
+      oneTimeFees: property.oneTimeFees,
+      petFees: property.petFees,
+      parkingFees: property.parkingFees,
     },
     unitTypes: units.map((u) => ({
       name: u.name,
@@ -318,6 +476,10 @@ async function loadPromptContext(propertyId: string) {
       priceMax: u.priceMax,
       availableCount: u.availableCount,
       deposit: u.deposit,
+      recurringFees: u.recurringFees,
+      oneTimeFees: u.oneTimeFees,
+      specials: u.specials,
+      quoteDisclaimer: u.quoteDisclaimer,
       description: u.description,
       isActive: u.isActive,
     })),
@@ -325,7 +487,39 @@ async function loadPromptContext(propertyId: string) {
     assistantSettings,
   });
 
-  return { property, systemPrompt, assistantSettingsVersion: assistantSettings.version };
+  return {
+    property,
+    systemPrompt,
+    assistantSettingsVersion: assistantSettings.version,
+    capturedDetails,
+    memoryPrompt: renderCapturedProspectMemory(capturedDetails),
+    answerSourceEvidence,
+    answerSourceRules: renderAnswerSourceRules(answerSourceEvidence),
+  };
+}
+
+function hasStructuredQuoteData(
+  property: typeof propertiesTable.$inferSelect,
+  units: Array<typeof unitTypesTable.$inferSelect>,
+) {
+  return units.some((unit) => unit.isActive && Boolean(unit.priceMin))
+    && (hasStructuredFeeData(property, units) || Boolean(property.applicationUrl) || Boolean(property.quoteDisclaimer));
+}
+
+function hasStructuredFeeData(
+  property: typeof propertiesTable.$inferSelect,
+  units: Array<typeof unitTypesTable.$inferSelect>,
+) {
+  return Boolean(property.applicationFee)
+    || property.recurringFees.length > 0
+    || property.oneTimeFees.length > 0
+    || property.petFees.length > 0
+    || property.parkingFees.length > 0
+    || units.some((unit) => (
+      Boolean(unit.deposit)
+      || unit.recurringFees.length > 0
+      || unit.oneTimeFees.length > 0
+    ));
 }
 
 type UsageShape = {
@@ -354,6 +548,7 @@ async function recordModelEvent(input: {
   confidence: number | null;
   usage?: UsageShape;
   escalationReason: string | null;
+  answerQualityGuardrail?: AnswerQualityGuardrail | null;
   errorMessage?: string | null;
 }) {
   const inputTokens = input.usage?.inputTokens ?? input.usage?.promptTokens ?? null;
@@ -382,8 +577,22 @@ async function recordModelEvent(input: {
     intent: input.intent,
     escalationReason: input.escalationReason,
     errorMessage: input.errorMessage ?? null,
-    metadata: {},
+    metadata: input.answerQualityGuardrail
+      ? getAnswerQualityMetadata(input.answerQualityGuardrail)
+      : {},
   });
+
+  const answerQualityMetadata = input.answerQualityGuardrail
+    ? {
+        lastAnswerQualityReview: {
+          category: input.answerQualityGuardrail.category,
+          reason: input.answerQualityGuardrail.reason,
+          confidence: input.answerQualityGuardrail.confidence,
+          routedToHuman: true,
+          reviewedAt: new Date().toISOString(),
+        },
+      }
+    : {};
 
   await db
     .update(conversationsTable)
@@ -393,8 +602,56 @@ async function recordModelEvent(input: {
         promptVersion: PROMPT_VERSION,
         assistantSettingsVersion: input.assistantSettingsVersion,
         lastModelEventStatus: input.status,
+        ...answerQualityMetadata,
       })}::jsonb`,
       updatedAt: new Date(),
     })
     .where(eq(conversationsTable.id, input.conversationId));
+}
+
+async function persistAnswerQualityEscalation(input: {
+  conversationId: string;
+  propertyId: string;
+  channel: ConversationChannel;
+  guardrail: AnswerQualityGuardrail;
+  assistantSettingsVersion: number | null;
+  intent: string | null;
+  startedAt: number;
+}) {
+  await escalateConversation({
+    conversationId: input.conversationId,
+    propertyId: input.propertyId,
+    reason: input.guardrail.reason,
+    priority: input.guardrail.priority,
+  });
+
+  const [message] = await db.insert(messagesTable).values({
+    conversationId: input.conversationId,
+    role: 'assistant',
+    authorType: 'ai',
+    content: input.guardrail.notice,
+    channel: input.channel,
+    confidenceScore: String(input.guardrail.confidence),
+    metadata: {
+      ...getAnswerQualityMetadata(input.guardrail),
+      model: 'answer_quality_guardrail',
+      promptVersion: PROMPT_VERSION,
+      assistantSettingsVersion: input.assistantSettingsVersion,
+    },
+  }).returning({ id: messagesTable.id });
+
+  await recordModelEvent({
+    conversationId: input.conversationId,
+    propertyId: input.propertyId,
+    messageId: message.id,
+    status: 'skipped',
+    intent: input.intent,
+    latencyMs: Date.now() - input.startedAt,
+    assistantSettingsVersion: input.assistantSettingsVersion,
+    toolCalls: [],
+    safety: { confidence: input.guardrail.confidence, flagged: false, autoEscalate: true },
+    confidence: input.guardrail.confidence,
+    escalationReason: input.guardrail.reason,
+    answerQualityGuardrail: input.guardrail,
+  });
 }

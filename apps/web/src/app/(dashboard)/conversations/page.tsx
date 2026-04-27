@@ -7,6 +7,9 @@ import {
   getAutomationStateLabel,
   getChannelClasses,
   getChannelLabel,
+  getEscalationSlaClasses,
+  getEscalationSlaLabel,
+  getPriorityClasses,
   getProspectLabel,
   getStatusClasses,
   getStatusLabel,
@@ -87,6 +90,26 @@ export default async function ConversationsPage() {
                       {conversation.prospectPhone && <span>{conversation.prospectPhone}</span>}
                       {conversation.status === 'escalated' && conversation.escalatedAt && (
                         <span>Escalated {formatConversationTime(conversation.escalatedAt)}</span>
+                      )}
+                      {conversation.openEscalation && (
+                        <>
+                          <span
+                            className={`rounded-full border px-2 py-1 ${getPriorityClasses(conversation.openEscalation.priority)}`}
+                          >
+                            {conversation.openEscalation.priority} priority
+                          </span>
+                          <span className={getEscalationSlaClasses(
+                            conversation.openEscalation.priority,
+                            conversation.openEscalation.createdAt,
+                          )}
+                          >
+                            {getEscalationSlaLabel(
+                              conversation.openEscalation.priority,
+                              conversation.openEscalation.createdAt,
+                            )}
+                          </span>
+                          <span>Unresolved</span>
+                        </>
                       )}
                     </div>
                   </CardContent>

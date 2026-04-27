@@ -11,6 +11,11 @@
 
 Build an AI-powered answering and leasing assistant for multifamily property management — delivering the core functionality of EliseAI at a fraction of the cost. The product targets independent operators and mid-size portfolios (50–500 units) who need 24/7 prospect and resident communication but can't justify enterprise pricing or lengthy implementation cycles.
 
+Phase 0 adds a managed acquisition layer in front of the answering product:
+short-form property content, paid social distribution, AI DM response, Google
+review monitoring, reputation alerts, and funnel reporting tied to leads, tours,
+leases, and vacancy-day reduction.
+
 ### Value Proposition
 
 - **EliseAI estimated cost:** $15–25+/unit/month, $10K–$50K implementation
@@ -23,23 +28,27 @@ Build an AI-powered answering and leasing assistant for multifamily property man
 
 ### Feature Map
 
-| Feature | EliseAI | Our MVP (Phase 1) | Phase 2 | Phase 3 |
-|---|---|---|---|---|
-| SMS conversations | ✅ | ✅ | ✅ | ✅ |
-| Email responses | ✅ | ❌ | ✅ | ✅ |
-| Webchat widget | ✅ | ✅ | ✅ | ✅ |
-| Voice/IVR | ✅ | ❌ | ❌ | ✅ |
-| Tour scheduling | ✅ | ❌ | ✅ | ✅ |
-| FAQ answering (pricing, pets, amenities) | ✅ | ✅ | ✅ | ✅ |
-| Follow-up sequences | ✅ | ❌ | ✅ | ✅ |
-| PMS integration | ✅ (deep) | ❌ | ❌ | ✅ (1 PMS) |
-| Maintenance requests | ✅ | ❌ | ❌ | ✅ |
-| Delinquency reminders | ✅ | ❌ | ❌ | ✅ |
-| Renewal outreach | ✅ | ❌ | ❌ | ✅ |
-| CRM / conversation dashboard | ✅ | Basic | ✅ | ✅ |
-| Multi-language support | ✅ (51 written) | ✅ (via LLM) | ✅ | ✅ |
-| Human handoff / escalation | ✅ | ✅ | ✅ | ✅ |
-| Analytics / reporting | ✅ | Basic | ✅ | ✅ |
+| Feature | EliseAI | Phase 0 | Our MVP (Phase 1) | Phase 2 | Phase 3 |
+|---|---|---|---|---|---|
+| Short-form leasing content | ❌ | ✅ | Optional | ✅ | ✅ |
+| Paid social lead generation | ❌ | ✅ | Optional | ✅ | ✅ |
+| AI DM responder | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Google review monitoring + alerts | ✅ | ✅ | Basic | ✅ | ✅ |
+| SMS conversations | ✅ | Optional | ✅ | ✅ | ✅ |
+| Email responses | ✅ | Optional | ❌ | ✅ | ✅ |
+| Webchat widget | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Voice/IVR | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Tour scheduling | ✅ | Manual/Calendly | ❌ | ✅ | ✅ |
+| FAQ answering (pricing, pets, amenities) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Follow-up sequences | ✅ | ✅ | ❌ | ✅ | ✅ |
+| PMS integration | ✅ (deep) | Optional CRM sync | ❌ | ❌ | ✅ (1 PMS) |
+| Maintenance requests | ✅ | Escalate only | ❌ | ❌ | ✅ |
+| Delinquency reminders | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Renewal outreach | ✅ | ❌ | ❌ | ❌ | ✅ |
+| CRM / conversation dashboard | ✅ | GoHighLevel or basic CRM | Basic | ✅ | ✅ |
+| Multi-language support | ✅ (51 written) | ✅ (via LLM) | ✅ (via LLM) | ✅ | ✅ |
+| Human handoff / escalation | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Analytics / reporting | ✅ | Funnel + reputation reporting | Basic | ✅ | ✅ |
 
 ### EliseAI Weaknesses to Exploit
 
@@ -54,6 +63,18 @@ Build an AI-powered answering and leasing assistant for multifamily property man
 ## 3. Product Requirements
 
 ### 3.1 Functional Requirements
+
+#### FR-0: Leasing Acquisition, Reviews, And Alerts (Phase 0)
+
+- **FR-0.1:** Capture the client-side intake required to launch acquisition: unit access for filming, pricing and availability update cadence, floor plans, amenities, fees, policies, leasing contacts, CRM access, ad budget approval, and Google Business Profile or review-alert access
+- **FR-0.2:** Generate property-specific short-form creative plans, scripts, hooks, captions, and `20-40` video variations from approved property facts
+- **FR-0.3:** Track each creative asset by property, channel, campaign, approval status, publish status, spend, leads, tours, leases, and performance notes
+- **FR-0.4:** Support organic posting and Meta ad campaign tracking with source attribution from ad spend to lead, tour, lease, and vacancy impact
+- **FR-0.5:** Provide an AI DM responder for approved channels that can answer leasing questions, qualify prospects, collect contact details, and route tour-ready leads
+- **FR-0.6:** Support SMS/email follow-up only when consent, quiet hours, opt-out, and channel policy requirements are satisfied
+- **FR-0.7:** Monitor Google reviews for new reviews, rating drops, low-star reviews, and high-risk keywords
+- **FR-0.8:** Draft Google review responses for approved categories and route negative, legal, safety, discrimination, fraud, maintenance, or staff-name complaints to a human owner
+- **FR-0.9:** Produce weekly acquisition and reputation reports covering cost per lead, cost per tour, cost per signed lease, lead-to-tour conversion, tour-to-lease conversion, response time, qualified leads, additional leases, vacancy days reduced, review response SLA, and unresolved reputation alerts
 
 #### FR-1: AI Conversation Engine
 
@@ -788,6 +809,43 @@ Implementation:
 
 ## 8. Development Roadmap
 
+### Phase 0: AI-Driven Leasing Acquisition System (Weeks 0–4)
+
+Goal: create more qualified demand before OmniLease automates the response and
+tour workflow. Phase 0 can be sold as a managed service while the productized
+lead response platform matures.
+
+**Week 0–1: Intake + Tracking Foundation**
+- [ ] Property acquisition intake: unit access, pricing/availability cadence, floor plans, amenities, policies, leasing contact, CRM access, ad budget, and Google review access
+- [ ] Source attribution model for property, channel, campaign, creative, lead, tour, lease, and vacancy impact
+- [ ] Performance dashboard/report template for CPL, cost per tour, cost per lease, lead-to-tour conversion, tour-to-lease conversion, response time, qualified leads, and vacancy days reduced
+
+**Week 1–2: Content + Distribution Workflow**
+- [ ] Script, hook, caption, and creative variation generator from approved property facts
+- [ ] Creative library for `12-40` monthly short-form videos per property
+- [ ] Organic posting and Meta ad campaign tracking
+- [ ] Retargeting-ready audience and campaign structure
+
+**Week 2–3: Lead Capture + AI DM Response**
+- [ ] GoHighLevel or OmniLease CRM lead capture setup
+- [ ] AI DM responder for approved social and web channels
+- [ ] Lead qualification fields, human escalation, and tour-request routing
+- [ ] SMS/email follow-up only after consent and opt-out controls are in place
+
+**Week 3–4: Reviews + Reputation Alerts**
+- [ ] Google review monitoring for new reviews, rating drops, and keyword alerts
+- [ ] AI-assisted review response drafts with approval workflow
+- [ ] Immediate human alerts for 1-2 star reviews, legal/safety/fair-housing concerns, fraud claims, unresolved maintenance complaints, and staff-name complaints
+- [ ] Weekly acquisition and reputation reporting
+
+**Phase 0 Deliverables:**
+- `12-40` short-form videos per property per month
+- `1-3` active ad campaigns
+- DM, web, or landing-page lead funnel
+- AI response system for inbound leasing messages
+- Google review monitoring and alert workflow
+- Weekly metrics report tied to spend, leads, tours, leases, reviews, and vacancy impact
+
 ### Phase 1: MVP (Weeks 1–6) — Target: 1 Pilot Property
 
 **Week 1–2: Foundation**
@@ -857,6 +915,24 @@ Implementation:
 | **Growth** | $4/unit/month (min $200/mo) | + Email, tour scheduling, follow-ups, 5 properties |
 | **Scale** | $5/unit/month (min $500/mo) | + Voice, PMS integration, unlimited properties, priority support |
 
+### Phase 0 Managed Acquisition Pricing
+
+Phase 0 should be priced against leasing outcomes, not only software seats.
+
+| Model | Price | Best For |
+|---|---|---|
+| **Base + Performance** | `$2,000-$4,000/month` plus `$50-$150` per qualified lead or `$300-$800` per signed lease | Recommended default when OmniLease can influence both lead volume and response speed |
+| **Flat Retainer** | `$2,500-$5,000/month` | Properties that want predictable cost for content, ads, basic automation, review alerts, and reporting |
+| **Performance Heavy** | `$500-$1,000/month` plus `10-20%` of first month's rent per signed lease | Advanced pilots where OmniLease controls the full funnel |
+
+Phase 0 service tiers:
+
+| Tier | Price | Includes |
+|---|---|---|
+| **Starter** | `$1,500/month` | `12` videos/month, organic posting, basic Google review alerts, no automation |
+| **Growth** | `$2,500/month` | `20` videos/month, paid ads, basic lead capture, weekly reporting |
+| **AI Leasing Engine** | `$4,000/month + performance` | `20-40` AI-generated video variations, paid ads + retargeting, AI DM responder, SMS/email follow-up where compliant, tour scheduling automation, Google review monitoring, alerting, weekly performance reporting |
+
 ### Competitive Positioning
 
 > "EliseAI for the rest of us — enterprise-grade AI leasing assistant without the enterprise price tag or 6-month implementation."
@@ -895,6 +971,20 @@ Key differentiators vs. EliseAI:
 
 ## 11. Success Metrics
 
+### Phase 0 Acquisition Metrics
+
+- **Qualified leads:** 20-40/month per property
+- **Additional leases:** +2 to +5/month per property
+- **Lead response time:** < 60 seconds
+- **Cost per lead:** tracked by campaign and creative
+- **Cost per tour:** tracked by campaign and creative
+- **Cost per signed lease:** tracked where CRM/lease data is available
+- **Lead-to-tour conversion:** tracked weekly
+- **Tour-to-lease conversion:** tracked weekly
+- **Vacancy days reduced:** reported per available unit when baseline data exists
+- **Review response SLA:** negative review owner alerted same day
+- **Unresolved reputation alerts:** visible in weekly report
+
 ### Product Metrics
 
 - **Response time:** < 5 seconds (text), < 10 seconds (email)
@@ -922,7 +1012,10 @@ Key differentiators vs. EliseAI:
 5. **Voice channel build vs. buy** — build custom on Twilio vs. use Vapi/Bland.ai managed platform?
 6. **PMS integration priority** — which PMS to integrate first? (AppFolio has better API docs; Yardi/RealPage have more market share)
 7. **LLC / business entity** — formation, business insurance, terms of service
+8. **Phase 0 ad budget floor** — confirm whether `$500/month` is the absolute minimum or whether pilots require `$1,000+` to produce useful campaign learning
+9. **Google review posting permissions** — decide whether OmniLease can post approved responses directly or only draft them for the property team
+10. **Lease attribution source of truth** — decide whether signed leases are confirmed in CRM, PMS, weekly owner report, or manual upload during early pilots
 
 ---
 
-*Last updated: April 4, 2026*
+*Last updated: April 26, 2026*

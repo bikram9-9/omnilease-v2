@@ -5,8 +5,11 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
   properties,
   conversations,
+  tourBookings,
+  tourOwners,
   messages,
   escalations,
   users,
@@ -33,6 +36,11 @@ export type ConversationListItem = {
     createdAt: Date;
     authorType: typeof messages.$inferSelect.authorType;
   } | null;
+  openEscalation: {
+    reason: string;
+    priority: typeof escalations.$inferSelect.priority;
+    createdAt: Date;
+  } | null;
 };
 
 export type ConversationDetail = {
@@ -48,12 +56,29 @@ export type ConversationDetail = {
   moveInDate: string | null;
   unitPreference: string | null;
   escalationReason: string | null;
+  answerQualityReview: {
+    category?: string;
+    reason?: string;
+    confidence?: number;
+    routedToHuman?: boolean;
+    reviewedAt?: string;
+  } | null;
   createdAt: Date;
   escalatedAt: Date | null;
   assignedAgentId: string | null;
   assignedAgentName: string | null;
   propertyName: string;
   propertySlug: string;
+  currentTour: {
+    id: string;
+    status: typeof tourBookings.$inferSelect.status;
+    startAt: Date;
+    endAt: Date;
+    timezone: string;
+    ownerName: string | null;
+    ownerAssignmentStatus: typeof tourBookings.$inferSelect.ownerAssignmentStatus;
+    ownerAssignmentReason: string | null;
+  } | null;
 };
 
 export type ConversationEscalation = {
@@ -111,10 +136,36 @@ export async function listConversationsForOrg(orgId: string): Promise<Conversati
     }
   }
 
+  const openEscalationRows = await db
+    .select({
+      conversationId: escalations.conversationId,
+      reason: escalations.reason,
+      priority: escalations.priority,
+      createdAt: escalations.createdAt,
+    })
+    .from(escalations)
+    .where(and(
+      inArray(escalations.conversationId, rows.map((row) => row.id)),
+      isNull(escalations.resolvedAt),
+    ))
+    .orderBy(desc(escalations.createdAt));
+
+  const openEscalationByConversation = new Map<string, ConversationListItem['openEscalation']>();
+  for (const row of openEscalationRows) {
+    if (!openEscalationByConversation.has(row.conversationId)) {
+      openEscalationByConversation.set(row.conversationId, {
+        reason: row.reason,
+        priority: row.priority,
+        createdAt: row.createdAt,
+      });
+    }
+  }
+
   return rows
     .map((row) => ({
       ...row,
       latestMessage: latestMessageByConversation.get(row.id) ?? null,
+      openEscalation: openEscalationByConversation.get(row.id) ?? null,
     }))
     .sort((left, right) => {
       if (left.status === 'escalated' && right.status !== 'escalated') return -1;
@@ -148,6 +199,7 @@ export async function getConversationDetailForOrg(
       moveInDate: conversations.moveInDate,
       unitPreference: conversations.unitPreference,
       escalationReason: conversations.escalationReason,
+      metadata: conversations.metadata,
       createdAt: conversations.createdAt,
       escalatedAt: conversations.escalatedAt,
       assignedAgentId: conversations.assignedAgentId,
@@ -165,7 +217,7 @@ export async function getConversationDetailForOrg(
     return { conversation: null, messages: [], escalations: [] };
   }
 
-  const [messageRows, escalationRows] = await Promise.all([
+  const [messageRows, escalationRows, tourRows] = await Promise.all([
     db
       .select({
         id: messages.id,
@@ -189,10 +241,30 @@ export async function getConversationDetailForOrg(
       .from(escalations)
       .where(eq(escalations.conversationId, conversationId))
       .orderBy(desc(escalations.createdAt)),
+    db
+      .select({
+        id: tourBookings.id,
+        status: tourBookings.status,
+        startAt: tourBookings.startAt,
+        endAt: tourBookings.endAt,
+        timezone: tourBookings.timezone,
+        ownerName: tourOwners.displayName,
+        ownerAssignmentStatus: tourBookings.ownerAssignmentStatus,
+        ownerAssignmentReason: tourBookings.ownerAssignmentReason,
+      })
+      .from(tourBookings)
+      .leftJoin(tourOwners, eq(tourOwners.id, tourBookings.tourOwnerId))
+      .where(eq(tourBookings.conversationId, conversationId))
+      .orderBy(desc(tourBookings.startAt))
+      .limit(1),
   ]);
 
   return {
-    conversation,
+    conversation: {
+      ...conversation,
+      answerQualityReview: getAnswerQualityReview(conversation.metadata),
+      currentTour: tourRows[0] ?? null,
+    },
     messages: messageRows.map((row) => ({
       id: row.id,
       role: row.role,
@@ -202,5 +274,20 @@ export async function getConversationDetailForOrg(
       createdAt: row.createdAt.toISOString(),
     })),
     escalations: escalationRows,
+  };
+}
+
+function getAnswerQualityReview(metadata: unknown): ConversationDetail['answerQualityReview'] {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const review = (metadata as { lastAnswerQualityReview?: unknown }).lastAnswerQualityReview;
+  if (!review || typeof review !== 'object') return null;
+  const value = review as Record<string, unknown>;
+
+  return {
+    category: typeof value.category === 'string' ? value.category : undefined,
+    reason: typeof value.reason === 'string' ? value.reason : undefined,
+    confidence: typeof value.confidence === 'number' ? value.confidence : undefined,
+    routedToHuman: typeof value.routedToHuman === 'boolean' ? value.routedToHuman : undefined,
+    reviewedAt: typeof value.reviewedAt === 'string' ? value.reviewedAt : undefined,
   };
 }

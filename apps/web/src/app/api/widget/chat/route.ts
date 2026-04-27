@@ -2,9 +2,13 @@ import { type NextRequest } from 'next/server';
 import { db, eq, and } from '@omnilease/db';
 import { properties, conversations, messages } from '@omnilease/db';
 import { streamConversationForWidget } from '@/lib/conversation/engine';
+import { escalateConversation } from '@/lib/conversation/escalate';
+import { classifyEscalationTrigger } from '@/lib/conversation/escalation-intent';
 import { classifyIntent } from '@/lib/conversation/intent';
 import { allowsAiReply } from '@/lib/conversation/takeover';
 import { syncGuestCardForConversation } from '@/lib/guest-cards/service';
+import { persistConversationOptOut } from '@/lib/outreach-opt-out';
+import { classifyOptOutMessage } from '@/lib/outreach-safety';
 
 export const maxDuration = 300;
 
@@ -102,6 +106,42 @@ export async function POST(req: NextRequest): Promise<Response> {
       userAgent,
     },
   });
+
+  if (classifyOptOutMessage(text)) {
+    await persistConversationOptOut({
+      conversationId,
+      propertyId: property.id,
+      reason: 'Prospect opted out via widget message.',
+    });
+    return widgetNoticeStream(
+      "You're opted out of automated follow-up messages. Contact the property team directly if you still need help.",
+    );
+  }
+
+  const escalationTrigger = classifyEscalationTrigger(text);
+  if (escalationTrigger && aiReplyAllowed) {
+    await escalateConversation({
+      conversationId,
+      propertyId: property.id,
+      reason: escalationTrigger.reason,
+      priority: escalationTrigger.priority,
+    });
+    await db.insert(messages).values({
+      conversationId,
+      role: 'assistant',
+      authorType: 'ai',
+      content: escalationTrigger.notice,
+      channel: 'website',
+      confidenceScore: '1.00',
+      metadata: {
+        escalationCategory: escalationTrigger.category,
+        escalationReason: escalationTrigger.reason,
+        source: 'rule_based_escalation_gate',
+      },
+    });
+
+    return widgetNoticeStream(escalationTrigger.notice);
+  }
 
   if (!aiReplyAllowed) {
     return widgetNoticeStream(pausedNotice);

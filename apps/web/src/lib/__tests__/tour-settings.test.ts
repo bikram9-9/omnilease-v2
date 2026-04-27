@@ -82,6 +82,8 @@ describe('tour settings', () => {
     formData.append('monOpen', '10:00');
     formData.append('monClose', '16:00');
     formData.append('blackoutDates', '2026-05-01\nnot-a-date,2026-05-02');
+    formData.append('calendarProvider', 'google_calendar');
+    formData.append('calendarId', 'leasing@example.com');
 
     expect(parseTourSettingsForm(formData)).toMatchObject({
       enabledTourTypes: ['virtual'],
@@ -91,6 +93,9 @@ describe('tour settings', () => {
       schedulingWindowDays: 30,
       tourHours: { mon: { open: '10:00', close: '16:00' } },
       blackoutDates: ['2026-05-01', '2026-05-02'],
+      calendarProvider: 'google_calendar',
+      calendarId: 'leasing@example.com',
+      calendarAuthStatus: 'configured',
     });
   });
 

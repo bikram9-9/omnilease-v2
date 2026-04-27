@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { createUnitType, updateUnitType, deleteUnitType } from './actions';
+import { formatFeeLines, parseFeeLines } from '@/lib/quote-fees';
 
 export function UnitsClient({
   propertyId,
@@ -37,6 +38,10 @@ export function UnitsClient({
       priceMax: numOrNull(formData.get('priceMax')),
       availableCount: Number(formData.get('availableCount') ?? 0),
       deposit: numOrNull(formData.get('deposit')),
+      recurringFees: parseFeeLines(String(formData.get('recurringFees') ?? '')),
+      oneTimeFees: parseFeeLines(String(formData.get('oneTimeFees') ?? '')),
+      specials: String(formData.get('specials') ?? '') || null,
+      quoteDisclaimer: String(formData.get('quoteDisclaimer') ?? '') || null,
       description: String(formData.get('description') ?? '') || null,
     };
     startTransition(async () => {
@@ -105,6 +110,18 @@ export function UnitsClient({
                 <Field id="deposit" label="Deposit ($)" type="number" defaultValue={editing?.deposit ?? ''} />
               </div>
               <Field id="description" label="Description" defaultValue={editing?.description ?? ''} />
+              <TextareaField
+                id="recurringFees"
+                label="Unit monthly fees"
+                defaultValue={formatFeeLines(editing?.recurringFees)}
+              />
+              <TextareaField
+                id="oneTimeFees"
+                label="Unit one-time fees"
+                defaultValue={formatFeeLines(editing?.oneTimeFees)}
+              />
+              <Field id="specials" label="Unit specials" defaultValue={editing?.specials ?? ''} />
+              <Field id="quoteDisclaimer" label="Unit quote disclaimer" defaultValue={editing?.quoteDisclaimer ?? ''} />
               <Button type="submit" disabled={isPending}>
                 Save
               </Button>
@@ -151,6 +168,24 @@ export function UnitsClient({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function TextareaField(props: {
+  id: string;
+  label: string;
+  defaultValue?: string | number | null;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={props.id}>{props.label}</Label>
+      <textarea
+        id={props.id}
+        name={props.id}
+        defaultValue={props.defaultValue == null ? '' : String(props.defaultValue)}
+        className="min-h-20 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-2 text-sm text-zinc-100"
+      />
     </div>
   );
 }

@@ -12,6 +12,9 @@ import {
   messages,
   or,
   properties,
+  tourBookings,
+  tourOwners,
+  tourNotificationJobs,
   conversations,
 } from '@omnilease/db';
 
@@ -71,6 +74,29 @@ export type GuestCardMergeAuditRow = {
   mergedAt: Date;
   revertedAt: Date | null;
   reversible: boolean;
+};
+
+export type GuestCardScheduledFollowUp = {
+  id: string;
+  jobType: typeof tourNotificationJobs.$inferSelect.jobType;
+  recipientKind: typeof tourNotificationJobs.$inferSelect.recipientKind;
+  channel: typeof tourNotificationJobs.$inferSelect.channel;
+  status: typeof tourNotificationJobs.$inferSelect.status;
+  runAt: Date;
+  nextAttemptAt: Date;
+  attempts: number;
+  lastError: string | null;
+};
+
+export type GuestCardTour = {
+  id: string;
+  status: typeof tourBookings.$inferSelect.status;
+  tourType: typeof tourBookings.$inferSelect.tourType;
+  startAt: Date;
+  endAt: Date;
+  timezone: string;
+  ownerName: string | null;
+  ownerAssignmentStatus: typeof tourBookings.$inferSelect.ownerAssignmentStatus;
 };
 
 export async function listGuestCardsForOrg(orgId: string): Promise<GuestCardListItem[]> {
@@ -145,6 +171,8 @@ export async function getGuestCardDetailForOrg(
   properties: Array<{ id: string; name: string; slug: string; source: string; lastSeenAt: Date }>;
   conversations: GuestCardConversation[];
   activities: Array<typeof guestCardActivities.$inferSelect>;
+  tours: GuestCardTour[];
+  scheduledFollowUps: GuestCardScheduledFollowUp[];
   duplicates: GuestCardDuplicate[];
   mergeAudits: GuestCardMergeAuditRow[];
 }> {
@@ -190,12 +218,22 @@ export async function getGuestCardDetailForOrg(
       properties: [],
       conversations: [],
       activities: [],
+      tours: [],
+      scheduledFollowUps: [],
       duplicates: [],
       mergeAudits: [],
     };
   }
 
-  const [propertyRows, conversationRows, activityRows, duplicateRows, mergeAudits] = await Promise.all([
+  const [
+    propertyRows,
+    conversationRows,
+    activityRows,
+    tourRows,
+    scheduledFollowUps,
+    duplicateRows,
+    mergeAudits,
+  ] = await Promise.all([
     db
       .select({
         id: properties.id,
@@ -228,6 +266,36 @@ export async function getGuestCardDetailForOrg(
       .from(guestCardActivities)
       .where(eq(guestCardActivities.guestCardId, guestCard.id))
       .orderBy(desc(guestCardActivities.occurredAt)),
+    db
+      .select({
+        id: tourBookings.id,
+        status: tourBookings.status,
+        tourType: tourBookings.tourType,
+        startAt: tourBookings.startAt,
+        endAt: tourBookings.endAt,
+        timezone: tourBookings.timezone,
+        ownerName: tourOwners.displayName,
+        ownerAssignmentStatus: tourBookings.ownerAssignmentStatus,
+      })
+      .from(tourBookings)
+      .leftJoin(tourOwners, eq(tourOwners.id, tourBookings.tourOwnerId))
+      .where(eq(tourBookings.guestCardId, guestCard.id))
+      .orderBy(desc(tourBookings.startAt)),
+    db
+      .select({
+        id: tourNotificationJobs.id,
+        jobType: tourNotificationJobs.jobType,
+        recipientKind: tourNotificationJobs.recipientKind,
+        channel: tourNotificationJobs.channel,
+        status: tourNotificationJobs.status,
+        runAt: tourNotificationJobs.runAt,
+        nextAttemptAt: tourNotificationJobs.nextAttemptAt,
+        attempts: tourNotificationJobs.attempts,
+        lastError: tourNotificationJobs.lastError,
+      })
+      .from(tourNotificationJobs)
+      .where(eq(tourNotificationJobs.guestCardId, guestCard.id))
+      .orderBy(desc(tourNotificationJobs.runAt)),
     db
       .select()
       .from(guestCardDuplicateCandidates)
@@ -314,6 +382,8 @@ export async function getGuestCardDetailForOrg(
       latestMessage: latestMessageByConversation.get(row.id) ?? null,
     })),
     activities: activityRows,
+    tours: tourRows,
+    scheduledFollowUps,
     duplicates: duplicateRows.flatMap((row) => {
       const otherId = row.primaryGuestCardId === guestCard.id ? row.duplicateGuestCardId : row.primaryGuestCardId;
       const otherCard = duplicateCardById.get(otherId);

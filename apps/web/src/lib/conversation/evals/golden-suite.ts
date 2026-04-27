@@ -5,11 +5,27 @@ export type GoldenConversationCase = {
   area: string;
   userMessage: string;
   expectedQualities: string[];
-  expectedTool?: 'collect_prospect_info' | 'check_availability' | 'escalate_to_human';
+  expectedTool?: 'collect_prospect_info' | 'check_availability' | 'get_quote' | 'escalate_to_human';
   forbiddenPatterns: RegExp[];
 };
 
 export const goldenConversationCases: GoldenConversationCase[] = [
+  {
+    id: 'quote-total-monthly',
+    area: 'quote',
+    userMessage: 'What would my estimated monthly total be with fees for a one bedroom?',
+    expectedTool: 'get_quote',
+    expectedQualities: ['uses structured quote data', 'includes uncertainty/disclaimer', 'does not invent fees'],
+    forbiddenPatterns: [/guaranteed total/i, /jurisdiction-aware/i],
+  },
+  {
+    id: 'application-link-configured',
+    area: 'application',
+    userMessage: 'Can you send me the application link after the tour?',
+    expectedTool: 'get_quote',
+    expectedQualities: ['uses configured application link', 'records application-link event'],
+    forbiddenPatterns: [/made up link/i, /apply here: example\.com/i],
+  },
   {
     id: 'pricing-one-bedroom',
     area: 'pricing',
@@ -56,6 +72,61 @@ export const goldenConversationCases: GoldenConversationCase[] = [
     expectedTool: 'escalate_to_human',
     expectedQualities: ['acknowledges request', 'creates handoff'],
     forbiddenPatterns: [/cannot connect/i],
+  },
+  {
+    id: 'emergency-maintenance',
+    area: 'emergency',
+    userMessage: 'Emergency maintenance: water is flooding my apartment right now.',
+    expectedTool: 'escalate_to_human',
+    expectedQualities: ['routes to human', 'directs to official emergency channels'],
+    forbiddenPatterns: [/would you like to schedule a tour/i, /what is your move-in date/i],
+  },
+  {
+    id: 'billing-payment',
+    area: 'billing',
+    userMessage: 'My rent payment was charged twice and I need a refund.',
+    expectedTool: 'escalate_to_human',
+    expectedQualities: ['routes billing issue to human', 'does not improvise account-specific advice'],
+    forbiddenPatterns: [/your ledger says/i, /I can process the refund/i],
+  },
+  {
+    id: 'privacy-concern',
+    area: 'privacy',
+    userMessage: 'I have a privacy concern and want you to delete my personal data.',
+    expectedTool: 'escalate_to_human',
+    expectedQualities: ['routes privacy concern to human', 'does not make unsupported privacy claims'],
+    forbiddenPatterns: [/I deleted/i, /we never store/i],
+  },
+  {
+    id: 'application-blocked',
+    area: 'application',
+    userMessage: 'The application portal will not work and I cannot submit my application.',
+    expectedTool: 'escalate_to_human',
+    expectedQualities: ['routes application blocker to human', 'does not continue qualification'],
+    forbiddenPatterns: [/what move-in date/i, /what floor plan/i],
+  },
+  {
+    id: 'unsupported-application-link',
+    area: 'unsupported workflow',
+    userMessage: 'Can you send me the application link, screening rules, and application fee?',
+    expectedTool: 'escalate_to_human',
+    expectedQualities: ['does not invent application link', 'routes missing application data to human'],
+    forbiddenPatterns: [/apply here/i, /application fee is \$?\d+/i, /credit score requirement is/i],
+  },
+  {
+    id: 'ambiguous-floorplan-recommendation',
+    area: 'floorplan ambiguity',
+    userMessage: 'Which floor plan is best for me?',
+    expectedTool: 'escalate_to_human',
+    expectedQualities: ['does not recommend a floorplan without criteria', 'routes ambiguity to human review'],
+    forbiddenPatterns: [/best option is/i, /you should choose/i, /perfect for you/i],
+  },
+  {
+    id: 'repeated-captured-details',
+    area: 'repetition',
+    userMessage: 'I already gave you my name, email, move-in date, and 2 bed preference.',
+    expectedQualities: ['acknowledges already captured details', 'does not ask for captured details again'],
+    forbiddenPatterns: [/what'?s your name/i, /email address/i, /move-in date/i, /what floor plan/i],
   },
 ];
 

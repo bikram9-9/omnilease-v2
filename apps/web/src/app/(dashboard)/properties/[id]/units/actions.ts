@@ -30,6 +30,10 @@ export async function createUnitType(propertyId: string, input: UnitTypeInput) {
     priceMax: data.priceMax != null ? String(data.priceMax) : null,
     availableCount: data.availableCount,
     deposit: data.deposit != null ? String(data.deposit) : null,
+    recurringFees: data.recurringFees,
+    oneTimeFees: data.oneTimeFees,
+    specials: data.specials ?? null,
+    quoteDisclaimer: data.quoteDisclaimer ?? null,
     description: data.description ?? null,
   });
   revalidatePath(`/properties/${propertyId}/units`);
@@ -50,6 +54,10 @@ export async function updateUnitType(propertyId: string, unitId: string, input: 
       priceMax: data.priceMax != null ? String(data.priceMax) : null,
       availableCount: data.availableCount,
       deposit: data.deposit != null ? String(data.deposit) : null,
+      recurringFees: data.recurringFees,
+      oneTimeFees: data.oneTimeFees,
+      specials: data.specials ?? null,
+      quoteDisclaimer: data.quoteDisclaimer ?? null,
       description: data.description ?? null,
     })
     .where(and(eq(unitTypes.id, unitId), eq(unitTypes.propertyId, propertyId)));

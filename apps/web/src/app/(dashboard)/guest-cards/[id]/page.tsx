@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Download, GitMerge, RotateCcw } from 'lucide-react';
 import { requireOrg } from '@/lib/auth';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -18,6 +18,7 @@ import {
   getStageLabel,
 } from '../queries';
 import {
+  cancelScheduledFollowUpAction,
   mergeDuplicateGuestCardAction,
   revertGuestCardMergeAction,
 } from './actions';
@@ -32,6 +33,8 @@ export default async function GuestCardDetailPage({
     properties,
     conversations,
     activities,
+    tours,
+    scheduledFollowUps,
     duplicates,
     mergeAudits,
   } = await getGuestCardDetailForOrg(orgId, id);
@@ -70,7 +73,7 @@ export default async function GuestCardDetailPage({
         </div>
         <Link
           href={`/guest-cards/${guestCard.id}/export`}
-          className={buttonVariants({ variant: 'outline' })}
+          className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-background bg-clip-padding px-2.5 text-sm font-medium outline-none transition-all select-none hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px dark:border-input dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
         >
           <Download className="h-4 w-4" />
           Export
@@ -166,6 +169,74 @@ export default async function GuestCardDetailPage({
               <DetailRow label="Source" value={guestCard.source} />
               <DetailRow label="Email consent" value={guestCard.emailConsentStatus} />
               <DetailRow label="SMS consent" value={guestCard.smsConsentStatus} />
+            </CardContent>
+          </Card>
+
+          <Card className="border-zinc-800 bg-zinc-950">
+            <CardHeader>
+              <CardTitle>Scheduled Follow-ups</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {scheduledFollowUps.length === 0 ? (
+                <p className="text-sm text-zinc-400">No scheduled automation.</p>
+              ) : (
+                scheduledFollowUps.map((job, index) => (
+                  <div key={job.id} className="space-y-3">
+                    {index > 0 && <Separator className="bg-zinc-800" />}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-zinc-100">
+                          {formatJobType(job.jobType)}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          {job.recipientKind} - {job.channel} - due {formatConversationTime(job.nextAttemptAt)}
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-zinc-800 px-2 py-1 text-xs text-zinc-300">
+                        {job.status}
+                      </span>
+                    </div>
+                    {job.lastError && (
+                      <p className="text-xs text-amber-300">{job.lastError}</p>
+                    )}
+                    {(job.status === 'pending' || job.status === 'failed') && (
+                      <form action={cancelScheduledFollowUpAction}>
+                        <input type="hidden" name="guestCardId" value={guestCard.id} />
+                        <input type="hidden" name="jobId" value={job.id} />
+                        <Button type="submit" size="sm" variant="outline">
+                          Cancel
+                        </Button>
+                      </form>
+                    )}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-zinc-800 bg-zinc-950">
+            <CardHeader>
+              <CardTitle>Tours</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {tours.length === 0 ? (
+                <p className="text-sm text-zinc-400">No tours linked yet.</p>
+              ) : (
+                tours.map((tour, index) => (
+                  <div key={tour.id} className="space-y-2">
+                    {index > 0 && <Separator className="bg-zinc-800" />}
+                    <div className="text-sm font-medium text-zinc-100">
+                      {formatTourWindow(tour.startAt, tour.endAt, tour.timezone)}
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      {tour.tourType} - {tour.status} - {tour.ownerAssignmentStatus}
+                    </div>
+                    <div className="text-sm text-zinc-300">
+                      Owner: {tour.ownerName ?? 'Manual assignment needed'}
+                    </div>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
 
@@ -288,4 +359,23 @@ function TimelineSummary({ title, count }: { title: string; count: number }) {
       </CardContent>
     </Card>
   );
+}
+
+function formatJobType(jobType: string) {
+  return jobType.replace(/_/g, ' ');
+}
+
+function formatTourWindow(startAt: Date, endAt: Date, timezone: string): string {
+  const date = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(startAt);
+  const time = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return `${date} ${time.format(startAt)}-${time.format(endAt)}`;
 }

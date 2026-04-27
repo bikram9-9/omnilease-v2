@@ -12,6 +12,23 @@ export type OfficeHours = {
   };
 };
 
+export type FeeLineItem = {
+  label: string;
+  amount: number;
+  required?: boolean;
+  notes?: string;
+};
+
+export type PropertyLaunchMode = 'draft' | 'monitor' | 'allowlist' | 'production';
+
+export type ReadinessTestResult = {
+  area: string;
+  status: 'passed' | 'failed';
+  conversationId?: string;
+  notes?: string;
+  checkedAt?: string;
+};
+
 export const properties = pgTable(
   'properties',
   {
@@ -30,6 +47,23 @@ export const properties = pgTable(
     brandColor: text('brand_color'),
     escalationEmail: text('escalation_email'),
     welcomeMessage: text('welcome_message'),
+    aiDisclosure: text('ai_disclosure'),
+    privacyNoticeUrl: text('privacy_notice_url'),
+    termsUrl: text('terms_url'),
+    privacyDisclosureText: text('privacy_disclosure_text'),
+    contactFallbackLabel: text('contact_fallback_label'),
+    contactFallbackUrl: text('contact_fallback_url'),
+    contactFallbackText: text('contact_fallback_text'),
+    applicationUrl: text('application_url'),
+    applicationFee: numeric('application_fee', { precision: 10, scale: 2 }),
+    quoteDisclaimer: text('quote_disclaimer'),
+    leasingSpecials: text('leasing_specials'),
+    recurringFees: jsonb('recurring_fees').$type<FeeLineItem[]>().notNull().default([]),
+    oneTimeFees: jsonb('one_time_fees').$type<FeeLineItem[]>().notNull().default([]),
+    petFees: jsonb('pet_fees').$type<FeeLineItem[]>().notNull().default([]),
+    parkingFees: jsonb('parking_fees').$type<FeeLineItem[]>().notNull().default([]),
+    launchMode: text('launch_mode').$type<PropertyLaunchMode>().notNull().default('draft'),
+    readinessTestResults: jsonb('readiness_test_results').$type<ReadinessTestResult[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -55,6 +89,10 @@ export const unitTypes = pgTable(
     priceMax: numeric('price_max', { precision: 10, scale: 2 }),
     availableCount: integer('available_count').notNull().default(0),
     deposit: numeric('deposit', { precision: 10, scale: 2 }),
+    recurringFees: jsonb('recurring_fees').$type<FeeLineItem[]>().notNull().default([]),
+    oneTimeFees: jsonb('one_time_fees').$type<FeeLineItem[]>().notNull().default([]),
+    specials: text('specials'),
+    quoteDisclaimer: text('quote_disclaimer'),
     description: text('description'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -96,6 +134,8 @@ export type AssistantPrimaryGoal = 'answer_questions' | 'qualify_lead' | 'book_t
 export type AssistantTone = 'warm_professional' | 'concise_direct' | 'luxury_concierge' | 'friendly_casual';
 export type AssistantCtaPreference = 'ask_for_tour' | 'ask_for_contact' | 'offer_human' | 'answer_only';
 export type TourType = 'in_person' | 'virtual' | 'self_guided';
+export type CalendarProvider = 'none' | 'google_calendar';
+export type CalendarAuthStatus = 'not_configured' | 'configured' | 'error';
 
 export const propertyAssistantSettings = pgTable(
   'property_assistant_settings',
@@ -130,6 +170,11 @@ export const propertyTourSettings = pgTable(
     schedulingWindowDays: integer('scheduling_window_days').notNull().default(14),
     tourHours: jsonb('tour_hours').$type<OfficeHours>().notNull().default({}),
     blackoutDates: jsonb('blackout_dates').$type<string[]>().notNull().default([]),
+    calendarProvider: text('calendar_provider').$type<CalendarProvider>().notNull().default('none'),
+    calendarId: text('calendar_id'),
+    calendarAuthStatus: text('calendar_auth_status').$type<CalendarAuthStatus>().notNull().default('not_configured'),
+    calendarLastError: text('calendar_last_error'),
+    calendarLastCheckedAt: timestamp('calendar_last_checked_at', { withTimezone: true }),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

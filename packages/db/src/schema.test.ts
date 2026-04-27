@@ -12,6 +12,8 @@ import {
   guestCardDuplicateCandidates,
   guestCardMergeAudits,
   guestCardPropertyLinks,
+  tourBookings,
+  tourNotificationJobs,
 } from './schema';
 
 describe('tenancy schema', () => {
@@ -37,6 +39,8 @@ describe('property schema', () => {
       expect.arrayContaining([
         'id', 'orgId', 'slug', 'name', 'address', 'city', 'state', 'zip',
         'timezone', 'officeHours', 'websiteWidgetId', 'messengerPageId',
+        'aiDisclosure', 'privacyNoticeUrl', 'termsUrl', 'privacyDisclosureText',
+        'contactFallbackLabel', 'contactFallbackUrl', 'contactFallbackText',
       ]),
     );
   });
@@ -158,7 +162,29 @@ describe('phase A operations schema', () => {
       expect.arrayContaining([
         'id', 'propertyId', 'enabledTourTypes', 'defaultDurationMinutes',
         'bufferMinutes', 'capacityPerSlot', 'schedulingWindowDays',
-        'tourHours', 'blackoutDates', 'updatedBy',
+        'tourHours', 'blackoutDates', 'calendarProvider', 'calendarId',
+        'calendarAuthStatus', 'calendarLastError', 'calendarLastCheckedAt',
+        'updatedBy',
+      ]),
+    );
+  });
+
+  it('tour bookings attach scheduled tours to properties, guest cards, and conversations', () => {
+    expect(Object.keys(tourBookings)).toEqual(
+      expect.arrayContaining([
+        'id', 'propertyId', 'guestCardId', 'conversationId', 'tourType',
+        'status', 'startAt', 'endAt', 'timezone', 'source', 'rescheduledAt',
+        'cancelledAt', 'cancellationReason', 'metadata',
+      ]),
+    );
+  });
+
+  it('tour notification jobs track confirmation, reminder, and follow-up delivery state', () => {
+    expect(Object.keys(tourNotificationJobs)).toEqual(
+      expect.arrayContaining([
+        'id', 'tourBookingId', 'propertyId', 'guestCardId', 'conversationId',
+        'jobType', 'recipientKind', 'channel', 'status', 'runAt',
+        'nextAttemptAt', 'attempts', 'sentAt', 'lastError', 'metadata',
       ]),
     );
   });

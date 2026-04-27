@@ -13,6 +13,8 @@ import {
   getAutomationStateLabel,
   getChannelClasses,
   getChannelLabel,
+  getEscalationSlaClasses,
+  getEscalationSlaLabel,
   getPriorityClasses,
   getProspectLabel,
   getStatusClasses,
@@ -152,6 +154,49 @@ export default async function ConversationDetailPage({
             </CardContent>
           </Card>
 
+          {conversation.currentTour && (
+            <Card className="border-zinc-800 bg-zinc-950">
+              <CardHeader>
+                <CardTitle>Scheduled tour</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <DetailRow
+                  label="Time"
+                  value={formatTourWindow(
+                    conversation.currentTour.startAt,
+                    conversation.currentTour.endAt,
+                    conversation.currentTour.timezone,
+                  )}
+                />
+                <DetailRow label="Owner" value={conversation.currentTour.ownerName} />
+                <DetailRow label="Assignment" value={conversation.currentTour.ownerAssignmentStatus} />
+                <DetailRow label="Routing note" value={conversation.currentTour.ownerAssignmentReason} />
+              </CardContent>
+            </Card>
+          )}
+
+          {conversation.answerQualityReview && (
+            <Card className="border-zinc-800 bg-zinc-950">
+              <CardHeader>
+                <CardTitle>Answer quality review</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <DetailRow label="Reason" value={conversation.answerQualityReview.reason ?? null} />
+                <DetailRow label="Category" value={conversation.answerQualityReview.category ?? null} />
+                <DetailRow
+                  label="Confidence"
+                  value={typeof conversation.answerQualityReview.confidence === 'number'
+                    ? conversation.answerQualityReview.confidence.toFixed(2)
+                    : null}
+                />
+                <DetailRow
+                  label="Routed to human"
+                  value={conversation.answerQualityReview.routedToHuman ? 'Yes' : null}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="border-zinc-800 bg-zinc-950">
             <CardHeader>
               <CardTitle>Controls</CardTitle>
@@ -202,9 +247,26 @@ export default async function ConversationDetailPage({
                       <span
                         className={`rounded-full border px-2 py-1 ${getPriorityClasses(escalation.priority)}`}
                       >
-                        {escalation.priority}
+                        {escalation.priority} priority
                       </span>
-                      <span>{formatConversationTime(escalation.createdAt)}</span>
+                      <span>{escalation.resolvedAt ? 'Resolved' : 'Unresolved'}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                      <span className={getEscalationSlaClasses(
+                        escalation.priority,
+                        escalation.createdAt,
+                        escalation.resolvedAt,
+                      )}
+                      >
+                        {getEscalationSlaLabel(
+                          escalation.priority,
+                          escalation.createdAt,
+                          escalation.resolvedAt,
+                        )}
+                      </span>
+                      <span className="text-zinc-500">
+                        Created {formatConversationTime(escalation.createdAt)}
+                      </span>
                     </div>
                     <p className="text-sm text-zinc-300">{escalation.reason}</p>
                     {escalation.resolvedAt && (
@@ -230,4 +292,19 @@ function DetailRow({ label, value }: { label: string; value: string | null }) {
       <div className="mt-1 text-zinc-200">{value ?? '—'}</div>
     </div>
   );
+}
+
+function formatTourWindow(startAt: Date, endAt: Date, timezone: string): string {
+  const date = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(startAt);
+  const time = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return `${date} ${time.format(startAt)}-${time.format(endAt)}`;
 }

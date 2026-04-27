@@ -6,6 +6,29 @@ record is signed off.
 
 ## Release Gates
 
+### Phase 0: Managed Acquisition Pilot
+
+Purpose: prove OmniLease can create and convert demand before deeper leasing
+automation is live for a property.
+
+Required checks:
+
+- Property has approved unit access for filming and named a filming window.
+- Pricing, availability, floor plans, amenities, fees, policies, and move-in
+  requirements are available and have an update owner.
+- Ad budget is approved, with a recommended floor of `$500-$2,000/month`.
+- CRM or lead-tracking destination is configured.
+- Google review monitoring access is configured or a manual review-alert owner
+  is named.
+- Human escalation owner is assigned for DMs, low-confidence replies,
+  complaints, legal/safety/fair-housing issues, and negative reviews.
+- Campaign tracking can report cost per lead, cost per tour, cost per lease when
+  available, lead-to-tour conversion, tour-to-lease conversion, response time,
+  qualified leads, leases, vacancy days reduced, and review-alert status.
+
+Exit: the property can run a weekly acquisition report tying content, ads,
+inbound messages, tours, leases, and reputation alerts to business outcomes.
+
 ### Release 0: Internal Staging
 
 Purpose: prove the app can run end to end with internal data before any renter
@@ -130,6 +153,59 @@ Sign-off:
 
 Owner: release owner.
 
+Current infrastructure status:
+
+- Vercel is linked to project `omnilease-web`
+  (`prj_BXpKfbMqKqRhZy2Rjreb13OVmcrT`) in org
+  `team_gHfRnmYMZc5cJQDTru1ANFvg`.
+- Vercel root directory is `apps/web`.
+- Supabase CLI is linked to project `omnilease-service-v2`
+  (`dnammstsshoixbvnbxxa`) on branch `main`.
+- Production cron is configured in `apps/web/vercel.json` for
+  `/api/cron/tour-notifications` once per day at 14:00 UTC. This is
+  deploy-safe on Vercel Hobby. On Pro, change the schedule to `*/15 * * * *`
+  if tour notifications need near-real-time processing.
+
+Required Vercel environment variables:
+
+- `DATABASE_URL`: Supabase pooler connection string for serverless runtime.
+- `NEXT_PUBLIC_SUPABASE_URL`: Supabase project URL.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Supabase browser/server SDK public key.
+- `RESEND_API_KEY`: Resend production API key.
+- `RESEND_FROM_EMAIL`: sender identity, recommended
+  `Omnilease <info@omnilease.ai>`.
+- `EMAIL_FROM`: sender identity used by the mail helper, recommended
+  `Omnilease <info@omnilease.ai>`.
+- `APP_URL`: canonical hosted app URL.
+- `TOUR_NOTIFICATION_CRON_SECRET`: random bearer secret for the tour
+  notification cron route.
+- `OMNILEASE_AI_MODEL`: model string for Vercel AI Gateway. Default is
+  `anthropic/claude-sonnet-4.6`.
+
+Do not set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, or `EMAIL_DELIVERY_MODE=log`
+in production. If `SMTP_HOST` exists, it takes precedence over Resend.
+
+Environment setup commands:
+
+```bash
+vercel env ls
+vercel env add RESEND_API_KEY production
+vercel env add RESEND_API_KEY development
+vercel env add RESEND_FROM_EMAIL production
+vercel env add RESEND_FROM_EMAIL development
+vercel env add EMAIL_FROM production
+vercel env add EMAIL_FROM development
+vercel env add APP_URL production
+vercel env add TOUR_NOTIFICATION_CRON_SECRET production
+vercel env add OMNILEASE_AI_MODEL production
+vercel env add OMNILEASE_AI_MODEL development
+vercel env pull apps/web/.env.local --yes
+```
+
+For Preview deployments, add the same variables with
+`vercel env add <NAME> preview <git-branch>` after choosing the branch and
+staging database strategy.
+
 Pre-flight:
 
 1. Confirm the target environment and branch.
@@ -153,6 +229,16 @@ Deploy:
 8. Trigger or simulate a handoff and send one human reply from the inbox.
 9. Trigger or simulate an escalation email.
 10. Record evidence in the go/no-go record.
+
+Cron verification:
+
+```bash
+curl -i "$APP_URL/api/cron/tour-notifications?limit=1" \
+  -H "Authorization: Bearer $TOUR_NOTIFICATION_CRON_SECRET"
+```
+
+Expected result: HTTP 200 with JSON containing `"ok":true`. A request without
+the bearer token must return HTTP 401 in production.
 
 Abort conditions:
 

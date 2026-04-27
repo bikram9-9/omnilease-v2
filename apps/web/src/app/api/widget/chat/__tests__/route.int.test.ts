@@ -22,8 +22,12 @@ import {
   organizations,
   properties,
   conversations,
+  escalations,
+  guestCardActivities,
   guestCards,
   messages,
+  tourBookings,
+  tourNotificationJobs,
 } from '@omnilease/db';
 import { POST } from '../route';
 
@@ -47,6 +51,7 @@ async function seedProperty() {
       name: 'Sunset Ridge',
       timezone: 'America/Chicago',
       websiteWidgetId: widgetId,
+      escalationEmail: 'manager@example.com',
     })
     .returning();
 
@@ -236,6 +241,199 @@ describe('POST /api/widget/chat (integration)', () => {
         authorType: 'prospect',
         content: 'Are you still there?',
       });
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('escalates emergency messages, pauses AI, and persists the emergency notice', async () => {
+    const { orgId, propertyId, propertySlug, widgetId } = await seedProperty();
+    try {
+      const req = new Request('https://app.example.com/api/widget/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          widgetId,
+          sessionId: 'sess_emergency',
+          text: 'Emergency maintenance: water is flooding my apartment right now.',
+          pageUrl: 'https://property.example.com/contact',
+        }),
+      });
+
+      const res = await POST(req as unknown as NextRequest);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/event-stream');
+      expect(await res.text()).toContain('call 911');
+      expect(streamTextMock).not.toHaveBeenCalled();
+
+      const [conversation] = await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.propertyId, propertyId));
+      expect(conversation).toMatchObject({
+        status: 'escalated',
+        automationState: 'human_takeover',
+        escalationReason: 'Emergency or urgent maintenance request',
+      });
+
+      const escalationRows = await db
+        .select()
+        .from(escalations)
+        .where(eq(escalations.conversationId, conversation.id));
+      expect(escalationRows).toHaveLength(1);
+      expect(escalationRows[0]).toMatchObject({
+        priority: 'urgent',
+        reason: 'Emergency or urgent maintenance request',
+      });
+
+      const messageRows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversation.id));
+      const prospect = messageRows.find((message) => message.authorType === 'prospect');
+      const assistant = messageRows.find((message) => message.authorType === 'ai');
+      expect(prospect?.content).toContain('Emergency maintenance');
+      expect(assistant?.content).toContain('property emergency maintenance line');
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('routes unsupported application questions to human review without streaming AI', async () => {
+    const { orgId, propertyId, propertySlug, widgetId } = await seedProperty();
+    try {
+      const req = new Request('https://app.example.com/api/widget/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          widgetId,
+          sessionId: 'sess_application_guardrail',
+          text: 'Can you send me the application link and screening requirements?',
+          pageUrl: 'https://property.example.com/apply',
+        }),
+      });
+
+      const res = await POST(req as unknown as NextRequest);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain("don't want to guess");
+      expect(streamTextMock).not.toHaveBeenCalled();
+
+      const [conversation] = await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.propertyId, propertyId));
+      expect(conversation).toMatchObject({
+        status: 'escalated',
+        automationState: 'human_takeover',
+        escalationReason: 'Application request lacks structured application source data',
+      });
+      expect(conversation.metadata).toMatchObject({
+        lastAnswerQualityReview: {
+          category: 'unsupported_application',
+          routedToHuman: true,
+        },
+      });
+
+      const messageRows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversation.id));
+      const assistant = messageRows.find((message) => message.authorType === 'ai');
+      expect(assistant?.metadata).toMatchObject({
+        answerQuality: {
+          category: 'unsupported_application',
+          reason: 'Application request lacks structured application source data',
+        },
+      });
+    } finally {
+      await cleanup(orgId, propertySlug);
+    }
+  });
+
+  it('persists STOP opt-out state and suppresses pending automated follow-ups', async () => {
+    const { orgId, propertyId, propertySlug, widgetId } = await seedProperty();
+    try {
+      const [conversation] = await db
+        .insert(conversations)
+        .values({
+          propertyId,
+          channel: 'website',
+          externalId: 'sess_stop',
+          status: 'active',
+        })
+        .returning();
+      const [guestCard] = await db
+        .insert(guestCards)
+        .values({
+          orgId,
+          primaryPropertyId: propertyId,
+          email: 'stop@example.com',
+          normalizedEmail: 'stop@example.com',
+          emailConsentStatus: 'subscribed',
+          smsConsentStatus: 'subscribed',
+          marketingConsentStatus: 'subscribed',
+          source: 'test',
+        })
+        .returning();
+      await db.update(conversations).set({ guestCardId: guestCard.id }).where(eq(conversations.id, conversation.id));
+      const [booking] = await db
+        .insert(tourBookings)
+        .values({
+          propertyId,
+          guestCardId: guestCard.id,
+          conversationId: conversation.id,
+          tourType: 'in_person',
+          status: 'booked',
+          startAt: new Date('2026-04-27T15:00:00.000Z'),
+          endAt: new Date('2026-04-27T15:30:00.000Z'),
+          timezone: 'America/Chicago',
+          source: 'ai_tool',
+        })
+        .returning();
+      const [job] = await db
+        .insert(tourNotificationJobs)
+        .values({
+          tourBookingId: booking.id,
+          propertyId,
+          guestCardId: guestCard.id,
+          conversationId: conversation.id,
+          jobType: 'tour_reminder',
+          recipientKind: 'prospect',
+          channel: 'email',
+          status: 'pending',
+          runAt: new Date('2026-04-27T15:00:00.000Z'),
+          nextAttemptAt: new Date('2026-04-27T15:00:00.000Z'),
+        })
+        .returning();
+
+      const req = new Request('https://app.example.com/api/widget/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          widgetId,
+          sessionId: 'sess_stop',
+          text: 'STOP',
+        }),
+      });
+
+      const res = await POST(req as unknown as NextRequest);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain("You're opted out");
+      expect(streamTextMock).not.toHaveBeenCalled();
+
+      const [updatedGuestCard] = await db.select().from(guestCards).where(eq(guestCards.id, guestCard.id));
+      expect(updatedGuestCard).toMatchObject({
+        emailConsentStatus: 'opted_out',
+        smsConsentStatus: 'opted_out',
+        marketingConsentStatus: 'opted_out',
+      });
+      const [updatedJob] = await db.select().from(tourNotificationJobs).where(eq(tourNotificationJobs.id, job.id));
+      expect(updatedJob).toMatchObject({
+        status: 'suppressed',
+        lastError: 'Prospect opted out via widget message.',
+      });
+      const activities = await db.select().from(guestCardActivities).where(eq(guestCardActivities.guestCardId, guestCard.id));
+      expect(activities.some((activity) => activity.title === 'Prospect opted out of automated outreach')).toBe(true);
     } finally {
       await cleanup(orgId, propertySlug);
     }

@@ -1,4 +1,4 @@
-import type { OfficeHours, PropertyTourSettings, TourType } from '@omnilease/db';
+import type { CalendarProvider, OfficeHours, PropertyTourSettings, TourType } from '@omnilease/db';
 
 export const tourTypeLabels: Record<TourType, string> = {
   in_person: 'In-person',
@@ -20,6 +20,11 @@ export type NormalizedTourSettings = {
   schedulingWindowDays: number;
   tourHours: OfficeHours;
   blackoutDates: string[];
+  calendarProvider: CalendarProvider;
+  calendarId: string | null;
+  calendarAuthStatus: 'not_configured' | 'configured' | 'error';
+  calendarLastError: string | null;
+  calendarLastCheckedAt?: Date | null;
   updatedAt?: Date;
 };
 
@@ -48,6 +53,11 @@ export const defaultTourSettings: NormalizedTourSettings = {
   schedulingWindowDays: 14,
   tourHours: defaultTourHours,
   blackoutDates: [],
+  calendarProvider: 'none',
+  calendarId: null,
+  calendarAuthStatus: 'not_configured',
+  calendarLastError: null,
+  calendarLastCheckedAt: null,
 };
 
 export function normalizeTourSettings(
@@ -64,6 +74,11 @@ export function normalizeTourSettings(
     schedulingWindowDays: clampInteger(row.schedulingWindowDays, 1, 365, 14),
     tourHours: normalizeOfficeHours(row.tourHours),
     blackoutDates: normalizeBlackoutDates(row.blackoutDates),
+    calendarProvider: normalizeCalendarProvider(row.calendarProvider),
+    calendarId: normalizeCalendarId(row.calendarId),
+    calendarAuthStatus: row.calendarAuthStatus ?? 'not_configured',
+    calendarLastError: row.calendarLastError ?? null,
+    calendarLastCheckedAt: row.calendarLastCheckedAt,
     updatedAt: row.updatedAt,
   };
 }
@@ -73,6 +88,8 @@ export function parseTourSettingsForm(formData: FormData): NormalizedTourSetting
     .getAll('tourTypes')
     .map((value) => String(value))
     .filter((value): value is TourType => tourTypes.includes(value as TourType));
+  const calendarProvider = normalizeCalendarProvider(String(formData.get('calendarProvider') ?? 'none'));
+  const calendarId = normalizeCalendarId(String(formData.get('calendarId') ?? ''));
 
   const tourHours = dayKeys.reduce<OfficeHours>((acc, day) => {
     if (formData.get(`${day}Enabled`) !== 'on') return acc;
@@ -106,6 +123,13 @@ export function parseTourSettingsForm(formData: FormData): NormalizedTourSetting
         .split(/\r?\n|,/)
         .map((value) => value.trim()),
     ),
+    calendarProvider,
+    calendarId,
+    calendarAuthStatus: calendarProvider === 'google_calendar' && calendarId
+      ? 'configured'
+      : 'not_configured',
+    calendarLastError: null,
+    calendarLastCheckedAt: null,
   };
 }
 
@@ -114,6 +138,9 @@ export function validateTourSettings(settings: NormalizedTourSettings, timezone:
   if (!isValidTimeZone(timezone)) warnings.push('Property timezone is invalid.');
   if (!settings.enabledTourTypes.length) warnings.push('At least one tour type must be enabled.');
   if (!Object.keys(settings.tourHours).length) warnings.push('At least one tour day must be enabled.');
+  if (settings.calendarProvider === 'google_calendar' && !settings.calendarId) {
+    warnings.push('Google Calendar ID is required before provider availability can be checked.');
+  }
 
   for (const day of dayKeys) {
     const hours = settings.tourHours[day];
@@ -186,6 +213,15 @@ export function isValidTimeZone(timezone: string): boolean {
 function validTourTypes(values: TourType[] | null | undefined): TourType[] {
   const filtered = (values ?? []).filter((value) => tourTypes.includes(value));
   return filtered.length ? filtered : ['in_person'];
+}
+
+function normalizeCalendarProvider(value: string | null | undefined): CalendarProvider {
+  return value === 'google_calendar' ? 'google_calendar' : 'none';
+}
+
+function normalizeCalendarId(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 function normalizeOfficeHours(value: OfficeHours | null | undefined): OfficeHours {
